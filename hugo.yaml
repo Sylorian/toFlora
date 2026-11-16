@@ -1,0 +1,45 @@
+# =============================================================================
+#  to Flora —— 单页 Hugo 站点（纯静态，没有任何后端）
+#
+#  · 只有一页：/（home）。没有菜单、没有列表页、没有分类、没有分页、
+#    没有 RSS / sitemap / robots.txt / 404。
+#  · 没有 theme，也没有 git submodule：layouts/ 与 assets/ 全部直接在本仓库里。
+#  · 全部内容都在 data/*.txt 里，改文本不需要碰任何代码或模板。
+#  · 没有表单、没有接口、没有数据库：构建出来的就是最终的一切。
+# =============================================================================
+
+# ← 换成你自己的 Pages 域名（保留结尾的 /）
+baseURL: "https://REPLACE-WITH-YOUR-PAGES-DOMAIN.pages.dev/"
+
+# Hugo 0.158 起用 locale（旧的 languageCode 会报 deprecated）；旧版会忽略这一行，不影响构建
+locale: "zh-CN"
+# 这个名字会出现在标题、球心的字、以及开场说明上。
+title: "to Flora"
+
+# 这一页之外的一切自动产物都关掉
+disableKinds:
+  - section
+  - taxonomy
+  - term
+  - RSS
+  - sitemap
+  - robotsTXT
+  - 404
+
+# Hugo 默认会往 <head> 里塞 <meta name="generator" content="Hugo 0.x.y">，
+# 不同版本插的位置还不一样。关掉它，0.147 和 0.169 构建出来的 HTML 就是逐字节一致的。
+disableHugoGeneratorInject: true
+
+params:
+  # ---------------------------------------------------------------------------
+  #  <html lang> 用的语言标记。
+  #
+  #  刻意不从 site.Language.Locale 取：那个字段是 Hugo 0.158 才加的，
+  #  而 Cloudflare Pages 默认装的是 0.147 —— 用了它构建会直接失败：
+  #      can't evaluate field Locale in type *langs.Language
+  #  改成一个普通参数，任何 Hugo 版本都能构建。
+  # ---------------------------------------------------------------------------
+  lang: "zh-CN"
+
+  # 开场小窗里的落款：Sylorian 献给 Flora
+  dedication: "Sylorian 献给 Flora"

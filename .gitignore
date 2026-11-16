@@ -1,0 +1,15 @@
+# Hugo 构建产物：绝对不进 Git（Cloudflare Pages 自己构建）
+public/
+resources/_gen/
+.hugo_build.lock
+
+# 依赖（只有想本地预编译 CSS 时才需要）
+node_modules/
+package-lock.json
+pnpm-lock.yaml
+
+# 系统 / 编辑器
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
