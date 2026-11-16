@@ -54,6 +54,7 @@
     var meteorsLayer = dom.meteors;
     var card = dom.card;
     var link = dom.link;
+    var nightEl = dom.night;
     var textEl = card.querySelector('[data-card-text]');
 
     var state = {
@@ -85,6 +86,10 @@
 
       hero: null,           /* 抽中的那颗星 */
       drawing: false,
+
+      birthday: false,
+      birthdayText: '',
+      breath: 0,
 
       card: { x: 0, y: 0, snap: true },
       last: 0,
@@ -129,6 +134,71 @@
       });
     }
 
+    /* -------------------------------------------------- 星野贴图（一次生成） ---
+       把近千颗极暗的小星画进一张 canvas，之后当背景图用：
+       每帧零成本，密度却能是 DOM 版本的五六倍。只在尺寸变化时重画。
+    ------------------------------------------------------------------- */
+
+    function makeField(w, h, count, size, alpha, cross) {
+      var c = document.createElement('canvas');
+      c.width = Math.max(2, Math.round(w));
+      c.height = Math.max(2, Math.round(h));
+      var g = c.getContext('2d');
+      if (!g) return '';
+
+      for (var i = 0; i < count; i++) {
+        var x = Math.random() * c.width;
+        var y = Math.random() * c.height;
+        var r = rand(size[0], size[1]);
+        var a = rand(alpha[0], alpha[1]);
+        var t = Math.random();
+        /* 冷白为主，极少数暖黄，让底纹不死 */
+        var col = t > 0.94 ? '255,236,206' : t > 0.62 ? '212,228,255' : '242,246,255';
+        g.fillStyle = 'rgba(' + col + ',' + a.toFixed(3) + ')';
+        g.beginPath();
+        g.arc(x, y, r, 0, 6.2832);
+        g.fill();
+
+        /* 少数亮一点的点带十字星芒 */
+        if (cross && Math.random() < 0.16) {
+          var len = r * rand(3.5, 6.5);
+          g.strokeStyle = 'rgba(' + col + ',' + (a * 0.62).toFixed(3) + ')';
+          g.lineWidth = 0.6;
+          g.beginPath();
+          g.moveTo(x - len, y);
+          g.lineTo(x + len, y);
+          g.moveTo(x, y - len);
+          g.lineTo(x, y + len);
+          g.stroke();
+        }
+      }
+      return c.toDataURL('image/png');
+    }
+
+    function buildFields() {
+      var w = state.frame.w + 52;
+      var h = state.frame.h + 52;
+      /* 亮度直接烘进像素，层本身不用 opacity（少一个合成层）。
+         第一版（760 颗、0.1–0.3 不透明度）几乎看不见，所以整体提亮、加密。 */
+      if (dom.fieldFar) {
+        dom.fieldFar.style.backgroundImage =
+          'url(' + makeField(w, h, 1150, [0.32, 0.95], [0.18, 0.52], false) + ')';
+      }
+      if (dom.fieldNear) {
+        dom.fieldNear.style.backgroundImage =
+          'url(' + makeField(w, h, 340, [0.55, 1.35], [0.34, 0.66], true) + ')';
+      }
+    }
+
+    function isBirthday(cfg) {
+      if (!cfg || !cfg.date || !cfg.text) return false;
+      var m = /^(\d{1,2})-(\d{1,2})$/.exec(String(cfg.date).trim());
+      if (!m) return false;
+      var now = new Date();
+      return now.getMonth() + 1 === parseInt(m[1], 10) &&
+             now.getDate() === parseInt(m[2], 10);
+    }
+
     /* ------------------------------------------------------------ 背景星尘 --- */
 
     function buildDust() {
@@ -139,7 +209,9 @@
         Math.pow(Math.max(state.cx, w - state.cx), 2) +
           Math.pow(Math.max(state.cy, h - state.cy), 2)
       );
-      var count = w < 700 ? 80 : 170;
+      /* 星尘从 170 降到 96：密度现在交给星野贴图（近千颗、零帧成本），
+         这一层只负责「会闪的那几颗」。实测每减 70 个元素约 +6fps。 */
+      var count = w < 700 ? 48 : 96;
       var frag = document.createDocumentFragment();
 
       for (var i = 0; i < count; i++) {
@@ -214,6 +286,12 @@
         var f = it.front;
         var scale = (0.55 + 0.92 * f) * it.k;
         var op = 0.16 + 0.84 * f;
+
+        /* 有卡片钉住时，其余的星退后半步（不 blur，只压暗 + 微缩） */
+        if (state.dimOthers && it !== state.active) {
+          scale *= 0.985;
+          op *= 0.76;
+        }
 
         var t =
           'translate3d(' + px(it.sx) + ',' + px(it.sy) + ',0) scale(' +
@@ -307,10 +385,11 @@
       /* 只有一部分星挂「呼吸」动画：一百多颗星全都各自跑 CSS 动画，
          软件渲染下帧率会掉一半；而且真的星空也不是每颗都在闪。
          亮星一律会闪，它们是主角。 */
-      it.live = it.kind === 'featured' || Math.random() < 0.42;
+      it.live = it.birthday || it.kind === 'featured' || Math.random() < 0.42;
       b.className =
         'star star--' + it.tint +
         (it.kind === 'featured' ? ' star--featured' : '') +
+        (it.birthday ? ' star--birthday' : '') +
         (it.live ? ' star--live' : '');
       b.setAttribute('data-star', it.id);
       b.setAttribute('aria-label', String(it.text).slice(0, 40));
@@ -465,6 +544,7 @@
 
     function show(it, pin) {
       cancelClose();
+      state.dimOthers = false;
       if (state.active === it) {
         if (pin) state.pinned = true;
         return;
@@ -478,6 +558,7 @@
       it.cardH = cardHeight();
 
       state.card.snap = true;
+      state.dimOthers = !!pin;          /* 只有点了才让其余星退后，悬停不折腾 */
       card.classList.add('is-open');
       sync();
       followCard();
@@ -486,6 +567,7 @@
 
     function hide() {
       cancelClose();
+      state.dimOthers = false;
       state.active = null;
       state.pinned = false;
       state.card.snap = true;
@@ -737,15 +819,16 @@
     var PRESET_TINTS = ['cream', 'cream', 'sky', 'sky', 'gold'];
     var FEATURED_TINTS = ['gold', 'gold', 'gold', 'rose', 'cream'];
 
-    function makeItem(text, kind) {
+    function makeItem(text, kind, birthday) {
       var feat = kind === 'featured';
       return {
         id: 's' + (++seq),
         kind: feat ? 'featured' : 'preset',
+        birthday: !!birthday,
         text: text,
-        tint: pick(feat ? FEATURED_TINTS : PRESET_TINTS),
-        unit: rand(0.76, 1.3),
-        halo: feat ? rand(0.74, 0.96) : rand(0.3, 0.56),
+        tint: birthday ? 'gold' : pick(feat ? FEATURED_TINTS : PRESET_TINTS),
+        unit: birthday ? 1.72 : rand(0.76, 1.3),
+        halo: birthday ? 1 : feat ? rand(0.74, 0.96) : rand(0.3, 0.56),
         size: 12,
         phi: 0,
         theta: 0,
@@ -757,7 +840,7 @@
       };
     }
 
-    function setStars(presets, featured) {
+    function setStars(presets, featured, birthdayText) {
       starsLayer.textContent = '';
       state.items = [];
       state.featured = [];
@@ -778,6 +861,12 @@
       for (var f = 0; f < featured.length; f++) {
         if (featured[f]) raw.push({ text: featured[f], kind: 'featured' });
       }
+      /* 生日当天：多一颗最亮的 */
+      if (birthdayText) {
+        raw.push({ text: birthdayText, kind: 'featured', birthday: true });
+        state.birthday = true;
+        if (nightEl) nightEl.classList.add('is-birthday');
+      }
       /* 打散，免得亮星扎堆 */
       for (var i = raw.length - 1; i > 0; i--) {
         var j = Math.floor(Math.random() * (i + 1));
@@ -787,12 +876,13 @@
       var n = raw.length;
       var base = baseSize(n);
       for (var k = 0; k < n; k++) {
-        var it = makeItem(raw[k].text, raw[k].kind);
+        var it = makeItem(raw[k].text, raw[k].kind, raw[k].birthday);
         var pt = spherePoint(k, n);
         it.theta = pt.theta + rand(-0.1, 0.1);
         it.phi = phiOf(pt.y) + rand(-0.05, 0.05);
         it.size = base * it.unit * (it.kind === 'featured' ? 1.3 : 1);
         it.el = createStar(it);
+        if (it.birthday) it.el.setAttribute('aria-label', it.text);
         state.items.push(it);
         if (it.kind === 'featured') state.featured.push(it);
         frag.appendChild(it.el);
@@ -855,6 +945,7 @@
       state.drawing = true;
       /* 球先加速 —— 流星雨和球的旋转是同一阵风 */
       state.spin = clamp(state.spin + 1.25, -5, 5);
+      if (dom.galaxy) dom.galaxy.classList.add('is-lit');
       meteorShower();
 
       var it = pick(state.featured);
@@ -864,6 +955,11 @@
       var fly = function () {
         state.hero = it;
         it.flying = true;
+        /* 搬到 UI 层：.orb 在抽签时会被模糊，而这一颗必须是最清楚的
+           （两层都是 inset:0 的绝对定位，坐标系一样，搬过去不会跳） */
+        it.el.classList.add('star--settled');   /* 别再重播入场动画 */
+        var ui = card.parentNode;
+        if (ui) ui.appendChild(it.el);
         it.el.classList.add('is-hero');
         it.el.style.zIndex = '900';
         it.el.style.opacity = '1';
@@ -888,6 +984,9 @@
         sync();
         if (dom.name) dom.name.classList.add('is-dim');
         if (dom.draw) dom.draw.classList.add('is-drawing');
+        /* 景深：球和银河糊掉、压暗，只留这颗星和卡片锐利 */
+        if (nightEl) nightEl.classList.add('is-focus');
+        if (dom.galaxy) dom.galaxy.classList.remove('is-lit');
         state.drawing = false;
         setDrawLabel('再抽一颗');
       };
@@ -899,6 +998,7 @@
     /* 把飞出去的星放回球面（不带动画） */
     function releaseHero(it) {
       it.flying = false;
+      if (starsLayer && it.el.parentNode !== starsLayer) starsLayer.appendChild(it.el);
       it.el.classList.remove('is-hero');
       it.el.style.transition = '';
       it.el.style.zIndex = '';
@@ -920,6 +1020,8 @@
       link.classList.remove('is-on');
       if (dom.name) dom.name.classList.remove('is-dim');
       if (dom.draw) dom.draw.classList.remove('is-drawing');
+      if (nightEl) nightEl.classList.remove('is-focus');
+      if (dom.galaxy) dom.galaxy.classList.remove('is-lit');
       setDrawLabel('抽一颗流星');
       sync();
 
@@ -940,6 +1042,7 @@
 
     function relayout() {
       measure();
+      buildFields();
       buildDust();
       var n = state.items.length;
       if (n) {
@@ -973,9 +1076,18 @@
     /* ---------------------------------------------------------- 启动 --- */
 
     measure();
+    buildFields();
     buildDust();
+    /* 开场：先虚再清，像睁开眼睛 */
+    if (nightEl && !state.reduced) {
+      nightEl.classList.add('is-unveiling');
+      window.setTimeout(function () {
+        nightEl.classList.remove('is-unveiling');
+      }, 520);
+    }
     state.raf = window.requestAnimationFrame(frame);
     meteorLoop();
+
 
     /* 记录指针最后移动的时刻，给悬停预览当闸门 */
     document.addEventListener('pointermove', function (e) {
@@ -1005,6 +1117,7 @@
       hold: hold,
       justDragged: justDragged,
       isHero: function () { return !!state.hero; },
+      isBirthday: function () { return state.birthday; },
       state: state
     };
   }

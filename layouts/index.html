@@ -84,6 +84,22 @@
   <div class="sky" aria-hidden="true">
     <span class="sky__nebula sky__nebula--a"></span>
     <span class="sky__nebula sky__nebula--b"></span>
+
+    {{/* 深紫 ↔ 蓝 缓慢循环流淌：两层对冲的色雾，各自漂移 + 淡入淡出 */}}
+    <span class="sky__wash sky__wash--purple"></span>
+    <span class="sky__wash sky__wash--blue"></span>
+
+    {{/* 银河：一条斜跨球体的呼吸光带（纯渐变，不用 blur，便宜） */}}
+    <div class="sky__galaxy" data-galaxy>
+      <span class="gx gx--glow"></span>
+      <span class="gx gx--core"></span>
+      <span class="gx gx--dust"></span>
+    </div>
+
+    {{/* 压暗的繁星底纹：两张 canvas 一次性生成的贴图，之后每帧零成本 */}}
+    <div class="sky__field sky__field--far" data-field="far"></div>
+    <div class="sky__field sky__field--near" data-field="near"></div>
+
     <div class="sky__dust" data-dust></div>
   </div>
 
@@ -161,9 +177,20 @@
 
 </main>
 
+{{/* 生日当天才会出现的那颗星：日期由 hugo.yaml 的 params.birthday 决定，
+     句子在 data/birthday.txt。两者任一为空就不出现。 */}}
+{{- $birthday := "" -}}
+{{- with readFile "data/birthday.txt" -}}
+  {{- range split (replace . "\r" "") "\n" -}}
+    {{- $line := trim . " \t" -}}
+    {{- if and $line (not (hasPrefix $line "#")) -}}{{- $birthday = $line -}}{{- end -}}
+  {{- end -}}
+{{- end -}}
+
 <script>
 window.__FLORA_PRESETS__  = {{ $presets | jsonify | safeJS }};
 window.__FLORA_FEATURED__ = {{ $featured | jsonify | safeJS }};
+window.__FLORA_BIRTHDAY__ = {{ (dict "date" (site.Params.birthday | default "") "text" $birthday) | jsonify | safeJS }};
 </script>
 {{ with $js }}<script src="{{ .RelPermalink }}" integrity="{{ .Data.Integrity }}" defer></script>{{ end }}
 </body>

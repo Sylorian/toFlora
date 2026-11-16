@@ -28,6 +28,9 @@
       draw: document.querySelector('[data-draw]'),
       respin: document.querySelector('[data-shuffle]'),
       dust: document.querySelector('[data-dust]'),
+      galaxy: document.querySelector('[data-galaxy]'),
+      fieldFar: document.querySelector('[data-field="far"]'),
+      fieldNear: document.querySelector('[data-field="near"]'),
       stars: document.querySelector('[data-stars]'),
       meteors: document.querySelector('[data-meteors]'),
       card: document.querySelector('[data-card]'),
@@ -39,7 +42,20 @@
 
     var presets = (window.__FLORA_PRESETS__ || []).slice();
     var featured = (window.__FLORA_FEATURED__ || []).slice();
-    sky.setStars(presets, featured);
+
+    /* 生日星：只有 hugo.yaml 里的日期就是今天，才把这句话交给 sky。
+       日期按访客本地时间算，不联网、不上报。 */
+    function birthdayWord(cfg) {
+      if (!cfg || !cfg.date || !cfg.text) return '';
+      var m = /^(\d{1,2})-(\d{1,2})$/.exec(String(cfg.date).trim());
+      if (!m) return '';
+      var now = new Date();
+      var hit = now.getMonth() + 1 === parseInt(m[1], 10) &&
+                now.getDate() === parseInt(m[2], 10);
+      return hit ? cfg.text : '';
+    }
+
+    sky.setStars(presets, featured, birthdayWord(window.__FLORA_BIRTHDAY__));
 
     /* ----------------------------------------------------- 抽一颗流星 --- */
 

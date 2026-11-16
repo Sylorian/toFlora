@@ -136,13 +136,20 @@ button {
   position: fixed;
   inset: 0;
   overflow: hidden;
+  /* 底色只做「中性的深」：颜色本身交给上面两层会流动的色雾去给 */
   background: radial-gradient(
-    120% 95% at 50% 44%,
-    #17224f 0%,
-    #0c1332 32%,
-    #060a18 64%,
-    #03050d 100%
-  );
+      120% 95% at 50% 44%,
+      #131a33 0%,
+      #0b1024 34%,
+      #060814 66%,
+      #03040c 100%
+    ),
+    linear-gradient(
+      to top,
+      rgba(58, 38, 86, 0.42) 0%,
+      rgba(30, 24, 52, 0.2) 20%,
+      transparent 48%
+    );
 }
 
 /* 四周压暗，视线收到中间那颗星球上 */
@@ -251,6 +258,205 @@ button {
     transform: scale(0.72);
   }
 }
+
+/* ------------------------------------------------- 2b. 银河 / 星野 ---
+   银河：一条斜跨球体的发光带，用径向渐变叠出来（不用 filter: blur ——
+   大面积模糊在软件渲染里最贵）。呼吸只动 opacity。
+   星野：两张 canvas 一次性生成的贴图，之后完全不重绘。
+--------------------------------------------------------------------------- */
+
+/* ------------------------------------------------ 2a. 深紫 ↔ 蓝 流淌 ---
+   两层巨大的色雾对冲：紫的一层亮起来时蓝的一层在退，反之亦然，
+   于是整片天的色相在深紫和蓝之间缓慢来回 —— 46 秒一个来回。
+   只动 opacity 和 transform（合成器就能做），成本很低。
+--------------------------------------------------------------------------- */
+
+.sky__wash {
+  position: absolute;
+  inset: -14%;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+
+.sky__wash--purple {
+  background: radial-gradient(
+      54% 48% at 34% 32%,
+      rgba(104, 62, 178, 0.55) 0%,
+      rgba(74, 40, 138, 0.24) 42%,
+      transparent 74%
+    ),
+    radial-gradient(
+      44% 40% at 74% 70%,
+      rgba(132, 76, 200, 0.36) 0%,
+      rgba(92, 52, 160, 0.14) 46%,
+      transparent 72%
+    );
+  animation: wash-purple 13s ease-in-out infinite;
+}
+
+.sky__wash--blue {
+  background: radial-gradient(
+      52% 46% at 64% 56%,
+      rgba(50, 100, 196, 0.52) 0%,
+      rgba(30, 62, 140, 0.22) 44%,
+      transparent 76%
+    ),
+    radial-gradient(
+      40% 38% at 28% 44%,
+      rgba(62, 128, 208, 0.3) 0%,
+      rgba(38, 84, 160, 0.12) 48%,
+      transparent 70%
+    );
+  animation: wash-blue 13s ease-in-out infinite;
+}
+
+@keyframes wash-purple {
+  0% {
+    opacity: 0.9;
+    transform: translate3d(-2%, 1%, 0) scale(1.03);
+  }
+  50% {
+    opacity: 0.3;
+    transform: translate3d(3%, -2%, 0) scale(1.09);
+  }
+  100% {
+    opacity: 0.9;
+    transform: translate3d(-2%, 1%, 0) scale(1.03);
+  }
+}
+
+/* 蓝的跟紫的正好反相：一边起来，另一边就退下去 */
+@keyframes wash-blue {
+  0% {
+    opacity: 0.22;
+    transform: translate3d(2%, -1%, 0) scale(1.07);
+  }
+  50% {
+    opacity: 0.92;
+    transform: translate3d(-3%, 2%, 0) scale(1.02);
+  }
+  100% {
+    opacity: 0.22;
+    transform: translate3d(2%, -1%, 0) scale(1.07);
+  }
+}
+
+.sky__galaxy {
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  width: 128vmax;
+  height: 46vmax;
+  margin: 0;
+  transform-origin: 50% 50%;
+  transform: translate(-50%, -50%) rotate(-22deg);
+  pointer-events: none;
+  transition: filter 0.9s var(--ease);
+}
+
+/* 三层都铺满带子，靠各自的渐变形状区分。
+   注意三点都是刻意的性能取舍：
+     · 不用 mix-blend-mode（大面积混合多花约 3fps）
+     · 不用 mask-image（多一个全尺寸遮罩层，约 2fps）
+     · 呼吸只动 opacity，不动 scale（每帧重采样一张超宽贴图最贵）*/
+.gx {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* 外辉光：最宽最淡的一层冷白 */
+.gx--glow {
+  background: radial-gradient(
+    56% 42% at 50% 50%,
+    rgba(204, 218, 255, 0.26) 0%,
+    rgba(152, 170, 226, 0.11) 40%,
+    transparent 74%
+  ),
+    radial-gradient(
+      40% 12% at 50% 50%,
+      rgba(226, 234, 255, 0.16) 0%,
+      rgba(180, 190, 240, 0.06) 55%,
+      transparent 82%
+    );
+  animation: gx-breathe 26s ease-in-out infinite;
+}
+
+/* 内核：窄一点、亮一点，偏一点紫白 */
+.gx--core {
+  background: radial-gradient(
+    30% 22% at 50% 50%,
+    rgba(238, 240, 255, 0.3) 0%,
+    rgba(188, 178, 242, 0.12) 46%,
+    transparent 76%
+  ),
+    radial-gradient(
+      22% 7% at 50% 50%,
+      rgba(255, 250, 246, 0.22) 0%,
+      transparent 76%
+    );
+  animation: gx-breathe 26s ease-in-out 2.5s infinite;
+}
+
+/* 尘埃带：两块压暗的椭圆，把光带切出层次（不用条纹 + 遮罩） */
+.gx--dust {
+  background: radial-gradient(
+      24% 34% at 39% 47%,
+      rgba(4, 6, 16, 0.55) 0%,
+      rgba(4, 6, 16, 0.2) 55%,
+      transparent 76%
+    ),
+    radial-gradient(
+      16% 26% at 60% 54%,
+      rgba(4, 6, 16, 0.42) 0%,
+      transparent 72%
+    );
+  opacity: 0.85;
+  animation: gx-breathe 26s ease-in-out 1.2s infinite;
+}
+
+@keyframes gx-breathe {
+  0%,
+  100% {
+    opacity: 0.52;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* 抽到一颗流星时，银河亮一档 —— 整片天回应这一次 */
+.sky__galaxy.is-lit {
+  filter: brightness(1.42) saturate(1.08);
+}
+
+/* 压暗的繁星底纹：两层不同尺度，视差系数不同，转动时就有纵深 */
+.sky__field {
+  position: absolute;
+  inset: -26px;
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  pointer-events: none;
+}
+
+.sky__field--far {
+  transform: none;
+}
+
+.sky__field--near {
+  opacity: 0.62;
+}
+
+/* 地平线：底部一层冷紫薄雾，把下半屏从「纯黑」里拉回来 */
+/* 生日当天：整片天亮 8% */
+.night.is-birthday .sky__field {
+  filter: brightness(1.14);
+}
+
+.night.is-birthday .sky__galaxy {
+  filter: brightness(1.22);
+}
+
 
 /* ---------------------------------------------------------- 3. 星球 ---
    星都在这层里，位置由 JS 每帧算（球面 → 透视投影），这是一层「可拖的星球」。
@@ -406,8 +612,46 @@ button {
   opacity: 0.5;
 }
 
+/* 抽中的那颗会从球层搬进 UI 层（避免被景深滤镜糊掉）。
+   搬动 = 重新插入 DOM = CSS 动画重启，于是它的 1.15s 入场动画会再放一遍，
+   期间 opacity 是 0 —— 看上去就是「星飞过去以后不见了」。
+   这颗已经入过场了，永久掐掉它的入场动画。 */
+.star--settled .star__body {
+  animation: none !important;
+}
+
 .star--featured .star__body {
   filter: brightness(1.1);
+}
+
+/* 生日当天的那颗：比所有亮星再大一档，常驻一圈很慢的呼吸光环 */
+.star--birthday .star__core {
+  width: 42%;
+  height: 42%;
+}
+
+.star--birthday .star__spark {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1.05);
+}
+
+.star--birthday .star__halo {
+  opacity: 0.95;
+}
+
+.star--birthday::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 330%;
+  height: 330%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  border: 1px solid rgba(255, 226, 195, 0.38);
+  opacity: 0.45;
+  pointer-events: none;
+  animation: ring-pulse 5.4s ease-out infinite;
 }
 
 /* 被抽中的那颗：飞到画面正中，变大、变亮，飞的动作交给 transform 过渡 */
@@ -515,6 +759,37 @@ button {
     opacity: 0;
     transform: translate(-50%, -50%) scale(1.35);
   }
+}
+
+/* --------------------------------------------------- 3b. 三处虚化 ---
+   1) 开场：整页从 blur(14px) 收回 0，像睁开眼睛；
+   2) 抽中一颗：球和银河模糊 7px、压暗到 55%，只留那颗星和卡片锐利；
+   3) 普通点星：不 blur，只让其余的星略微退后（在 JS 里按帧算，最便宜）。
+   大面积 filter 只在「开场一次」和「抽签一次」触发，不是常驻。
+--------------------------------------------------------------------------- */
+
+.night .sky,
+.night .orb {
+  transition: filter 0.85s var(--ease), opacity 0.85s var(--ease);
+}
+
+/* 开场：先虚，再清 */
+.night.is-unveiling .sky,
+.night.is-unveiling .orb {
+  filter: blur(14px);
+}
+
+/* 抽中一颗：景深 */
+.night.is-focus .sky {
+  filter: blur(6px) brightness(0.62) saturate(0.85);
+}
+
+.night.is-focus .orb {
+  filter: blur(7px) brightness(0.55) saturate(0.8);
+}
+
+.night.is-focus .name {
+  filter: blur(4px);
 }
 
 /* ------------------------------------------------------- 4. to Flora ---
