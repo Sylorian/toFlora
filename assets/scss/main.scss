@@ -26,6 +26,17 @@
   font-display: swap;
 }
 
+/* 手写体：锐字小豆岛 · 春日海间山长（REEJI-Xiaodou-SeaGB-Flash）
+   原文件 3.5MB，这里按页面实际用到的 649 个字符做了子集 → 181KB。
+   缺字（繁体的 愛兒給葉親靜順變讓訴，以及 湮溟谏）会回退到宋体/思源。 */
+@font-face {
+  font-family: "Xiaodou";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../fonts/xiaodou-sea.woff2") format("woff2");
+}
+
 @font-face {
   font-family: "Cormorant Garamond";
   src: url("/fonts/cormorant-garamond-300-latin.woff2") format("woff2");
@@ -58,6 +69,11 @@
     sans-serif;
   --serif: "Cormorant Garamond", Georgia, "Times New Roman", "Songti SC",
     "STSong", "SimSun", serif;
+  /* 手写体：句子、落款、按钮文案都用它 */
+  /* 手写体后面接楷体：字库里没有的那十几个字（繁体的愛兒給葉親靜順變讓訴、
+     以及溟谏湮）会落到楷体上 —— 楷体同样是手写出身，混进去比落宋体自然得多 */
+  --hand: "Xiaodou", KaiTi, "Kaiti SC", STKaiti, "Songti SC", STSong, SimSun,
+    serif;
   --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC",
     "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
 
@@ -1058,10 +1074,10 @@ button {
 
 /* 卡片里只有一句话：衬线、放大、像一句引文 */
 .card__text {
-  font-family: var(--serif);
-  font-size: 17px;
-  line-height: 1.85;
-  letter-spacing: 0.01em;
+  font-family: var(--hand);
+  font-size: 19px;
+  line-height: 1.95;
+  letter-spacing: 0.015em;
   color: #fdf8ef;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
@@ -1086,8 +1102,8 @@ button {
 }
 
 .card.is-hero .card__text {
-  font-size: 20px;
-  line-height: 1.8;
+  font-size: 23px;
+  line-height: 1.9;
 }
 
 /* ----------------------------------------------------- 6. 抽一颗流星 --- */
@@ -1159,10 +1175,11 @@ button {
 .draw__label {
   position: absolute;
   left: 50%;
-  top: calc(100% + 10px);
+  top: calc(100% + 9px);
   transform: translateX(-50%);
-  font-size: 11px;
-  letter-spacing: 0.26em;
+  font-family: var(--hand);
+  font-size: 14px;
+  letter-spacing: 0.1em;
   color: var(--faint);
   white-space: nowrap;
   pointer-events: none;
@@ -1332,11 +1349,11 @@ button {
 }
 
 .intro__sign-b {
-  font-family: var(--serif);
-  font-size: clamp(14px, 1.6vw, 17px);
-  line-height: 1;
-  letter-spacing: 0.32em;
-  text-indent: 0.32em;
+  font-family: var(--hand);
+  font-size: clamp(16px, 1.8vw, 20px);
+  line-height: 1.15;
+  letter-spacing: 0.16em;
+  text-indent: 0.16em;
   color: rgba(255, 228, 195, 0.86);
   animation: sign-in 1.5s var(--ease) 0.85s both;
 }
