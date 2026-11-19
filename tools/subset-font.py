@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """按页面实际用到的字符，给手写体做子集。
 
 用法：
@@ -11,7 +11,7 @@
 改了 data/*.txt 之后如果出现了新字，重跑一次这个脚本就行；
 不重跑也不会崩 —— 新字会退到楷体（--hand 里的 fallback）。
 """
-import io, os, sys
+import io, os, re, sys
 
 SITE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(SITE, "static", "fonts", "xiaodou-sea.woff2")
@@ -21,6 +21,15 @@ UI = "to Flora Sylorian 献给 Flora 抽一颗流星 再抽一颗 重新排列�
 
 def collect():
     chars = set(UI)
+    # 模板里的界面文字也算：少收一个字，那个字就会掉到楷体
+    try:
+        html = open(os.path.join(SITE, "layouts", "index.html"), encoding="utf-8").read()
+        html = re.sub(r"\{\{.*?\}\}", " ", html, flags=re.S)
+        html = re.sub(r"<[^>]+>", " ", html)
+        chars.update(html)
+    except OSError:
+        pass
+
     for fn in ("presets.txt", "featured.txt", "birthday.txt"):
         p = os.path.join(SITE, "data", fn)
         if not os.path.exists(p):
@@ -53,6 +62,7 @@ def main():
         "--output-file=" + OUT,
     ])
     print("字符数 %d → %s (%.1f KB)" % (len(chars), OUT, os.path.getsize(OUT) / 1024))
+
 
 if __name__ == "__main__":
     main()

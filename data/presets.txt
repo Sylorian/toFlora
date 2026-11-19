@@ -83,7 +83,7 @@ let the wind whisper（让风告诉你。）
 明天依旧爱你
 尔尔辞晚，朝朝辞暮
 我有一棵树，而你是春天
-＞Sylorian.Love(object:"Flora");（这行会报错我乱写的=D）
+>Sylorian.Love(object:"Flora");（这行会报错我乱写的=D）
 You're my Sunshine（你是我的晨曦）
 和羞走，倚门回首，却把青梅嗅
 好的，祝您OK！！！

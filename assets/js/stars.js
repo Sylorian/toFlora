@@ -81,12 +81,19 @@
 
       active: null,
       pinned: false,
-      hold: false,
       reduced: reduced(),
 
       hero: null,           /* 抽中的那颗星 */
       drawing: false,
 
+      pointerX: -9999,
+      pointerY: -9999,
+      tiltX: 0,
+      tiltY: 0,
+      gyroX: 0,
+      gyroY: 0,
+      gyroSeen: false,
+      stirred: false,
       birthday: false,
       birthdayText: '',
       breath: 0,
@@ -127,7 +134,7 @@
         dom.shade.style.top = state.cy - state.radius + 'px';
       }
       state.avoid = [];
-      [dom.draw, dom.respin].forEach(function (el) {
+      [dom.draw].forEach(function (el) {
         if (!el) return;
         var r = el.getBoundingClientRect();
         if (r.width && r.height) state.avoid.push(r);
@@ -139,55 +146,108 @@
        每帧零成本，密度却能是 DOM 版本的五六倍。只在尺寸变化时重画。
     ------------------------------------------------------------------- */
 
-    function makeField(w, h, count, size, alpha, cross) {
+    /* 星野：先在离屏画一场星空，留着当贴图。
+       之前为了省事用 fillRect 画硬像素点，看着糙（用户反馈「不如之前好看」）；
+       现在改成「软边发光精灵 + lighter 叠加」—— 一颗星是一个径向渐变的小光斑，
+       亮的那些再贴一个十字星芒精灵。全部只在尺寸变化时画一次。 */
+
+    var SPRITES = null;
+
+    function makeSprite(rgb, spark) {
+      var S = 64;
       var c = document.createElement('canvas');
-      c.width = Math.max(2, Math.round(w));
-      c.height = Math.max(2, Math.round(h));
+      c.width = c.height = S;
       var g = c.getContext('2d');
-      if (!g) return '';
+      var r = S / 2;
+
+      var rg = g.createRadialGradient(r, r, 0, r, r, r);
+      rg.addColorStop(0, 'rgba(' + rgb + ',1)');
+      rg.addColorStop(0.14, 'rgba(' + rgb + ',0.72)');
+      rg.addColorStop(0.34, 'rgba(' + rgb + ',0.24)');
+      rg.addColorStop(0.7, 'rgba(' + rgb + ',0.04)');
+      rg.addColorStop(1, 'rgba(' + rgb + ',0)');
+      g.fillStyle = rg;
+      g.fillRect(0, 0, S, S);
+
+      if (spark) {
+        g.globalCompositeOperation = 'lighter';
+        var gr = g.createLinearGradient(0, r, S, r);
+        gr.addColorStop(0, 'rgba(' + rgb + ',0)');
+        gr.addColorStop(0.5, 'rgba(' + rgb + ',0.55)');
+        gr.addColorStop(1, 'rgba(' + rgb + ',0)');
+        g.fillStyle = gr;
+        g.fillRect(0, r - 0.6, S, 1.2);
+
+        var gv = g.createLinearGradient(r, 0, r, S);
+        gv.addColorStop(0, 'rgba(' + rgb + ',0)');
+        gv.addColorStop(0.5, 'rgba(' + rgb + ',0.55)');
+        gv.addColorStop(1, 'rgba(' + rgb + ',0)');
+        g.fillStyle = gv;
+        g.fillRect(r - 0.6, 0, 1.2, S);
+      }
+      return c;
+    }
+
+    function sprites() {
+      if (SPRITES) return SPRITES;
+      SPRITES = {
+        dots: [
+          makeSprite('238,244,255', false),
+          makeSprite('206,224,255', false),
+          makeSprite('255,236,206', false)
+        ],
+        sparks: [
+          makeSprite('245,249,255', true),
+          makeSprite('255,232,198', true)
+        ]
+      };
+      return SPRITES;
+    }
+
+    function paintField(canvas, count, size, alpha, cross, dim) {
+      if (!canvas) return;
+      var sp = sprites();
+      var dpr = Math.min(2, window.devicePixelRatio || 1);
+      var w = canvas.clientWidth || state.frame.w + 52;
+      var h = canvas.clientHeight || state.frame.h + 52;
+      if (canvas.width !== Math.round(w * dpr) ||
+          canvas.height !== Math.round(h * dpr)) {
+        canvas.width = Math.round(w * dpr);
+        canvas.height = Math.round(h * dpr);
+      }
+      var g = canvas.getContext('2d');
+      if (!g) return;
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      g.clearRect(0, 0, w, h);
+      g.globalCompositeOperation = 'lighter';
 
       for (var i = 0; i < count; i++) {
-        var x = Math.random() * c.width;
-        var y = Math.random() * c.height;
-        var r = rand(size[0], size[1]);
-        var a = rand(alpha[0], alpha[1]);
+        var x = Math.random() * w;
+        var y = Math.random() * h;
         var t = Math.random();
-        /* 冷白为主，极少数暖黄，让底纹不死 */
-        var col = t > 0.94 ? '255,236,206' : t > 0.62 ? '212,228,255' : '242,246,255';
-        g.fillStyle = 'rgba(' + col + ',' + a.toFixed(3) + ')';
-        g.beginPath();
-        g.arc(x, y, r, 0, 6.2832);
-        g.fill();
+        var sp1 = t > 0.94 ? sp.dots[2] : t > 0.72 ? sp.dots[1] : sp.dots[0];
 
-        /* 少数亮一点的点带十字星芒 */
-        if (cross && Math.random() < 0.16) {
-          var len = r * rand(3.5, 6.5);
-          g.strokeStyle = 'rgba(' + col + ',' + (a * 0.62).toFixed(3) + ')';
-          g.lineWidth = 0.6;
-          g.beginPath();
-          g.moveTo(x - len, y);
-          g.lineTo(x + len, y);
-          g.moveTo(x, y - len);
-          g.lineTo(x, y + len);
-          g.stroke();
+        var base = rand(size[0], size[1]);
+        var d = base * 5.5;                       /* 光斑直径 = 点径的 7 倍 */
+        var al = rand(alpha[0], alpha[1]) * (dim || 1);
+        g.globalAlpha = al > 1 ? 1 : al;
+        g.drawImage(sp1, x - d / 2, y - d / 2, d, d);
+
+        /* 少数亮的：再叠一颗带十字星芒的 */
+        if (cross && Math.random() < 0.18) {
+          var sd = base * rand(22, 34);
+          g.globalAlpha = Math.min(1, al * 0.9);
+          g.drawImage(sp.sparks[Math.random() < 0.3 ? 1 : 0], x - sd / 2, y - sd / 2, sd, sd);
         }
       }
-      return c.toDataURL('image/png');
+
+      g.globalAlpha = 1;
+      g.globalCompositeOperation = 'source-over';
     }
 
     function buildFields() {
-      var w = state.frame.w + 52;
-      var h = state.frame.h + 52;
-      /* 亮度直接烘进像素，层本身不用 opacity（少一个合成层）。
-         第一版（760 颗、0.1–0.3 不透明度）几乎看不见，所以整体提亮、加密。 */
-      if (dom.fieldFar) {
-        dom.fieldFar.style.backgroundImage =
-          'url(' + makeField(w, h, 1150, [0.32, 0.95], [0.18, 0.52], false) + ')';
-      }
-      if (dom.fieldNear) {
-        dom.fieldNear.style.backgroundImage =
-          'url(' + makeField(w, h, 340, [0.55, 1.35], [0.34, 0.66], true) + ')';
-      }
+      paintField(dom.fieldFar, 1250, [0.34, 0.95], [0.18, 0.52], false, 1);
+      paintField(dom.fieldNear, 300, [0.7, 1.5], [0.42, 0.98], true, 0.68);
     }
 
     function isBirthday(cfg) {
@@ -309,6 +369,7 @@
         if (state.active.front < MIN_FRONT) hide();
         else followCard();
       }
+
     }
 
     /* ------------------------------------------------------------ 帧循环 --- */
@@ -332,7 +393,7 @@
         var breathe = state.reduced
           ? 0
           : 1 + 0.25 * Math.sin(state.clock * 0.055 + 0.6);
-        var cruise = state.reduced || state.hold || state.hero ? 0 : BASE_SPIN * breathe;
+        var cruise = state.reduced || state.hero ? 0 : BASE_SPIN * breathe;
 
         /* 惯性衰减：先快后慢，尾巴长一点，停得不生硬 */
         state.spin += (cruise - state.spin) * Math.min(1, dt * 1.6);
@@ -345,6 +406,20 @@
       var follow = 1 - Math.exp(-dt * 22);
       state.yaw += (state.yawTarget - state.yaw) * follow;
       state.pitch += (state.pitchTarget - state.pitch) * follow;
+
+      /* 甩球搅动天空：转得越快，流星越多、银河越亮 */
+      var sp = Math.abs(state.spin || 0);
+      if (!state.reduced && !state.hero && sp > 1.5) {
+        var chance = Math.min(0.5, dt * (sp - 1.2) * 0.9);
+        if (Math.random() < chance) spawnMeteor(0);
+      }
+      if (dom.galaxy) {
+        var stirred = sp > 1.6;
+        if (stirred !== state.stirred) {
+          state.stirred = stirred;
+          dom.galaxy.classList.toggle('is-stirred', stirred);
+        }
+      }
 
       /* 位置过渡（重排） */
       for (var i = 0; i < state.items.length; i++) {
@@ -362,6 +437,28 @@
         }
       }
 
+      /* 卡片倾斜：有陀螺仪就跟手机姿态走（安卓），没有就跟着鼠标 */
+      if (state.active && !state.reduced) {
+        var tRx = 0;
+        var tRy = 0;
+        if (state.gyroSeen) {
+          tRx = state.gyroX;
+          tRy = state.gyroY;
+        } else {
+          var cb = card.getBoundingClientRect();
+          if (cb.width) {
+            var nx = clamp((state.pointerX - (cb.left + cb.width / 2)) / (cb.width * 0.9), -1, 1);
+            var ny = clamp((state.pointerY - (cb.top + cb.height / 2)) / (cb.height * 1.6), -1, 1);
+            tRx = ny * -6;
+            tRy = nx * 7;
+          }
+        }
+        var kk = 1 - Math.exp(-dt * 9);
+        state.tiltX += (tRx - state.tiltX) * kk;
+        state.tiltY += (tRy - state.tiltY) * kk;
+        card.style.setProperty('--rx', state.tiltX.toFixed(2) + 'deg');
+        card.style.setProperty('--ry', state.tiltY.toFixed(2) + 'deg');
+      }
       render();
     }
 
@@ -385,7 +482,7 @@
       /* 只有一部分星挂「呼吸」动画：一百多颗星全都各自跑 CSS 动画，
          软件渲染下帧率会掉一半；而且真的星空也不是每颗都在闪。
          亮星一律会闪，它们是主角。 */
-      it.live = it.birthday || it.kind === 'featured' || Math.random() < 0.42;
+      it.live = it.birthday || it.kind === 'featured' || Math.random() < 0.22;
       b.className =
         'star star--' + it.tint +
         (it.kind === 'featured' ? ' star--featured' : '') +
@@ -559,6 +656,12 @@
 
       state.card.snap = true;
       state.dimOthers = !!pin;          /* 只有点了才让其余星退后，悬停不折腾 */
+      /* 倾斜归零：不然卡片会带着上一次的角度出现 */
+      state.tiltX = 0;
+      state.tiltY = 0;
+      card.style.setProperty('--rx', '0deg');
+      card.style.setProperty('--ry', '0deg');
+
       card.classList.add('is-open');
       sync();
       followCard();
@@ -662,6 +765,10 @@
       if (d.moved > 8) {
         state.dragGuard = performance.now();
         state.spin = clamp(state.vel * 0.34, -5, 5);
+        /* 快甩：甩得够猛就召唤一场流星雨，并落下一颗星 */
+        if (!state.drawing && !state.hero && Math.abs(state.vel) > 30) {
+              draw();
+        }
       }
       state.drag = null;
       orb.classList.remove('is-dragging');
@@ -859,7 +966,10 @@
         if (presets[p]) raw.push({ text: presets[p], kind: 'preset' });
       }
       for (var f = 0; f < featured.length; f++) {
-        if (featured[f]) raw.push({ text: featured[f], kind: 'featured' });
+        var fi = featured[f];
+        if (!fi) continue;
+        if (typeof fi === 'string') raw.push({ text: fi, kind: 'featured' });
+        else if (fi.text) raw.push({ text: fi.text, kind: 'featured' });
       }
       /* 生日当天：多一颗最亮的 */
       if (birthdayText) {
@@ -875,23 +985,33 @@
 
       var n = raw.length;
       var base = baseSize(n);
-      for (var k = 0; k < n; k++) {
-        var it = makeItem(raw[k].text, raw[k].kind, raw[k].birthday);
-        var pt = spherePoint(k, n);
-        it.theta = pt.theta + rand(-0.1, 0.1);
-        it.phi = phiOf(pt.y) + rand(-0.05, 0.05);
-        it.size = base * it.unit * (it.kind === 'featured' ? 1.3 : 1);
-        it.el = createStar(it);
-        if (it.birthday) it.el.setAttribute('aria-label', it.text);
-        state.items.push(it);
-        if (it.kind === 'featured') state.featured.push(it);
-        frag.appendChild(it.el);
-      }
-      starsLayer.appendChild(frag);
 
-      measure();
-      render();
-      igniteByRadius();
+      /* 一次插 109 个元素，浏览器要在同一帧里提升 109 个合成层 ——
+         软件渲染下那一下就是 800ms 的冻结。分 3 批插入，把成本摊到 3 帧。 */
+      var CHUNK = Math.ceil(n / 3);
+      var k = 0;
+      function batch() {
+        var end = Math.min(n, k + CHUNK);
+        for (; k < end; k++) {
+          var it = makeItem(raw[k].text, raw[k].kind, raw[k].birthday);
+          var pt = spherePoint(k, n);
+          it.theta = pt.theta + rand(-0.1, 0.1);
+          it.phi = phiOf(pt.y) + rand(-0.05, 0.05);
+          it.size = base * it.unit * (it.kind === 'featured' ? 1.3 : 1);
+          it.el = createStar(it);
+          if (it.birthday) it.el.setAttribute('aria-label', it.text);
+          state.items.push(it);
+          if (it.kind === 'featured') state.featured.push(it);
+          frag.appendChild(it.el);
+        }
+        starsLayer.appendChild(frag);
+        frag = document.createDocumentFragment();
+        measure();
+        render();
+        if (k < n) window.requestAnimationFrame(batch);
+        else igniteByRadius();
+      }
+      batch();
     }
 
     /* 点亮顺序：离球心近的先亮，一圈圈往外开 */
@@ -937,18 +1057,27 @@
     }
 
     /* 抽签：流星雨 → 亮星飞到正中 → 卡片居中出现 */
-    function draw() {
-      if (state.drawing) return;
+    /* opts.exclude：这些句子先不抽（已经抽过的）——
+       全部抽过之后再从整池重新开始，永远不会「抽不出来」。 */
+    function draw(opts) {
+      if (state.drawing) return null;
       if (state.hero) heroExit(true);
-      if (!state.featured.length) return;
+      if (!state.featured.length) return null;
       hide();
       state.drawing = true;
+      if (dom.onDraw) {
+        try { dom.onDraw(); } catch (e) { /* 回调出错不影响画面 */ }
+      }
       /* 球先加速 —— 流星雨和球的旋转是同一阵风 */
       state.spin = clamp(state.spin + 1.25, -5, 5);
       if (dom.galaxy) dom.galaxy.classList.add('is-lit');
       meteorShower();
 
-      var it = pick(state.featured);
+      /* 池子不再限定在那 24 颗亮星：整片天上的任何一颗都可能被抽中 */
+      var all = state.items.filter(function (f) {
+        return !f.flying;
+      });
+      var it = pick(all.length ? all : state.items);
       var ch = cardHeight();
       var box = heroPos(ch);
 
@@ -976,23 +1105,27 @@
         textEl.textContent = it.text;
         state.active = it;
         state.pinned = true;
-        card.classList.add('is-open', 'is-hero');
+        state.tiltX = 0;
+        state.tiltY = 0;
+        card.style.setProperty('--rx', '0deg');
+        card.style.setProperty('--ry', '0deg');
         card.style.setProperty('--w', px(box.w));
         card.style.left = px(box.x);
         card.style.top = px(box.y);
+        /* 从正中那颗星的位置长出来 */
+        card.classList.add('is-open', 'is-hero');
         link.classList.remove('is-on');
         sync();
         if (dom.name) dom.name.classList.add('is-dim');
-        if (dom.draw) dom.draw.classList.add('is-drawing');
         /* 景深：球和银河糊掉、压暗，只留这颗星和卡片锐利 */
         if (nightEl) nightEl.classList.add('is-focus');
         if (dom.galaxy) dom.galaxy.classList.remove('is-lit');
         state.drawing = false;
-        setDrawLabel('再抽一颗');
       };
 
       /* 等流星雨爬到最密的时候再飞星：先密，再有一个「它来了」的瞬间 */
       window.setTimeout(fly, state.reduced ? 40 : 1150);
+      return it;
     }
 
     /* 把飞出去的星放回球面（不带动画） */
@@ -1019,10 +1152,8 @@
       card.classList.remove('is-open', 'is-hero');
       link.classList.remove('is-on');
       if (dom.name) dom.name.classList.remove('is-dim');
-      if (dom.draw) dom.draw.classList.remove('is-drawing');
       if (nightEl) nightEl.classList.remove('is-focus');
       if (dom.galaxy) dom.galaxy.classList.remove('is-lit');
-      setDrawLabel('抽一颗流星');
       sync();
 
       if (instant || state.reduced) { releaseHero(it); return; }
@@ -1031,11 +1162,6 @@
         'translate3d(' + px(it.sx) + ',' + px(it.sy) + ',0) scale(' +
         (Math.round((0.55 + 0.92 * it.front) * it.k * 100) / 100) + ')';
       window.setTimeout(function () { releaseHero(it); }, 780);
-    }
-
-    function setDrawLabel(text) {
-      var el = dom.draw && dom.draw.querySelector('.draw__label');
-      if (el) el.textContent = text;
     }
 
     function closeHero() { heroExit(false); }
@@ -1070,7 +1196,6 @@
       }
     }
 
-    function hold(on) { state.hold = !!on; }
     function closeAll() { if (state.hero) heroExit(false); hide(); }
 
     /* ---------------------------------------------------------- 启动 --- */
@@ -1078,12 +1203,16 @@
     measure();
     buildFields();
     buildDust();
-    /* 开场：先虚再清，像睁开眼睛 */
+    /* 开场：先虚再清，像睁开眼睛（两段跳变，不是连续过渡） */
     if (nightEl && !state.reduced) {
       nightEl.classList.add('is-unveiling');
       window.setTimeout(function () {
         nightEl.classList.remove('is-unveiling');
-      }, 520);
+        nightEl.classList.add('is-unveil2');
+      }, 190);
+      window.setTimeout(function () {
+        nightEl.classList.remove('is-unveil2');
+      }, 380);
     }
     state.raf = window.requestAnimationFrame(frame);
     meteorLoop();
@@ -1093,6 +1222,30 @@
     document.addEventListener('pointermove', function (e) {
       if (e.pointerType === 'touch') return;
       state.lastMove = performance.now();
+    }, { passive: true });
+
+    /* 陀螺仪（安卓无需授权）：以「第一次拿起来的姿态」为基准，
+       之后前后左右倾斜 → 卡片最多 ±14°。基准极慢地跟着漂，
+       免得手机姿态变了以后卡片一直歪着。桌面没有这个事件，自然走鼠标那套。 */
+    (function bindGyro() {
+      if (!window.DeviceOrientationEvent || state.reduced) return;
+      var base = null;
+      window.addEventListener('deviceorientation', function (e) {
+        if (e.beta == null || e.gamma == null) return;
+        if (!base) base = { b: e.beta, g: e.gamma };
+        var db = e.beta - base.b;
+        var dg = e.gamma - base.g;
+        base.b += db * 0.005;
+        base.g += dg * 0.005;
+        state.gyroSeen = true;
+        state.gyroX = clamp(db * 0.62, -14, 14);
+        state.gyroY = clamp(dg * 0.62, -14, 14);
+      }, true);
+    })();
+
+    document.addEventListener('pointermove', function (e) {
+      state.pointerX = e.clientX;
+      state.pointerY = e.clientY;
     }, { passive: true });
 
     orb.addEventListener('pointerdown', onDown, false);
@@ -1114,10 +1267,8 @@
       reshuffle: reshuffle,
       relayout: relayout,
       closeAll: closeAll,
-      hold: hold,
       justDragged: justDragged,
       isHero: function () { return !!state.hero; },
-      isBirthday: function () { return state.birthday; },
       state: state
     };
   }
