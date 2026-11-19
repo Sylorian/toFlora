@@ -19,7 +19,13 @@
   var FOCAL = 8;           /* 透视焦距，单位是半径：8 表示很温和的透视 */
   var MIN_FRONT = 0.1;     /* 星转到背面到这个程度就把卡片收掉 */
 
-  var seq = 0;             /* 句子没有 id，自己发一个 */
+  /* 手机：窄屏、或只有触摸的粗指针设备。开启后会关掉一批
+   「桌面看不出差别、但在手机上很贵」的东西。 */
+var IS_MOBILE =
+  window.matchMedia('(max-width: 820px)').matches ||
+  window.matchMedia('(pointer: coarse)').matches;
+
+var seq = 0;             /* 句子没有 id，自己发一个 */
 
   function rand(a, b) { return a + (b - a) * Math.random(); }
   function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
@@ -210,7 +216,7 @@
     function paintField(canvas, count, size, alpha, cross, dim) {
       if (!canvas) return;
       var sp = sprites();
-      var dpr = Math.min(2, window.devicePixelRatio || 1);
+      var dpr = Math.min(IS_MOBILE ? 1.5 : 2, window.devicePixelRatio || 1);
       var w = canvas.clientWidth || state.frame.w + 52;
       var h = canvas.clientHeight || state.frame.h + 52;
       if (canvas.width !== Math.round(w * dpr) ||
@@ -274,7 +280,7 @@
       );
       /* 星尘从 170 降到 96：密度现在交给星野贴图（近千颗、零帧成本），
          这一层只负责「会闪的那几颗」。实测每减 70 个元素约 +6fps。 */
-      var count = w < 700 ? 48 : 96;
+      var count = IS_MOBILE ? 26 : w < 700 ? 48 : 96;
       var frag = document.createDocumentFragment();
 
       for (var i = 0; i < count; i++) {
@@ -356,16 +362,38 @@
           op *= 0.76;
         }
 
-        var t =
-          'translate3d(' + px(it.sx) + ',' + px(it.sy) + ',0) scale(' +
-          (Math.round(scale * 1000) / 1000) + ')';
-        if (it._t !== t) { it.el.style.transform = t; it._t = t; }
+        /* 球转得很慢（0.034 rad/s）：单帧位移常常不到半个像素，
+           这时候重写 transform 是纯浪费 —— 109 颗星每帧 109 次样式写入，
+           正是低端机上卡的主要原因。位移 < 0.5px 且缩放没变就跳过。 */
+        var moved =
+          it._x === undefined ||
+          Math.abs(it.sx - it._x) > 0.5 ||
+          Math.abs(it.sy - it._y) > 0.5 ||
+          Math.abs(scale - (it._s || 0)) > 0.008;
+        if (moved) {
+          it._x = it.sx;
+          it._y = it.sy;
+          it._s = scale;
+          it.el.style.transform =
+            'translate3d(' + px(it.sx) + ',' + px(it.sy) + ',0) scale(' +
+            (Math.round(scale * 1000) / 1000) + ')';
+        }
 
-        var o = Math.round(op * 100) / 100;
+        /* 闪烁：直接乘在这一帧本来就要写的 opacity 上，
+           不再让每颗星都跑一个 CSS 动画（那是手机上最大的开销）。 */
+        if (it.live) {
+          op *= 0.68 + 0.32 * Math.sin(state.clock * it.twSpeed + it.twPhase);
+        }
+
+        /* 量化到 0.04 一档：肉眼看不出，但写入次数少一半 */
+        var o = Math.round(op * 25) / 25;
         if (it._o !== o) { it.el.style.opacity = o; it._o = o; }
 
         var z = Math.round(f * 200);
-        if (it._z !== z) { it.el.style.zIndex = z; it._z = z; }
+        if (it._z === undefined || Math.abs(z - it._z) >= 2) {
+          it.el.style.zIndex = z;
+          it._z = z;
+        }
       }
 
       if (state.active && state.active !== state.hero) {
@@ -377,8 +405,19 @@
 
     /* ------------------------------------------------------------ 帧循环 --- */
 
+    var skipFrame = false;
+
     function frame(now) {
       state.raf = window.requestAnimationFrame(frame);
+
+      /* 手机上隔帧渲染（30fps）：球转得很慢，肉眼几乎看不出；
+         低端机省下来的一半 CPU 就是「不卡」和「卡」的差别。
+         dt 用的是真实时间差，所以运动速度不变。 */
+      if (IS_MOBILE && !state.reduced) {
+        skipFrame = !skipFrame;
+        if (skipFrame) return;
+      }
+
       if (!state.last) state.last = now;
       var dt = Math.min(64, now - state.last) / 1000;
       state.last = now;
@@ -517,7 +556,11 @@
       /* 只有一部分星挂「呼吸」动画：一百多颗星全都各自跑 CSS 动画，
          软件渲染下帧率会掉一半；而且真的星空也不是每颗都在闪。
          亮星一律会闪，它们是主角。 */
-      it.live = it.birthday || it.kind === 'featured' || Math.random() < 0.22;
+      /* 闪烁：每颗星有自己的周期和相位，永远不同步。
+         手机上只给一小部分挂动画（上百个 CSS 动画会拖垮低端机）。 */
+      it.live =
+        it.birthday || it.kind === 'featured' ||
+        Math.random() < (IS_MOBILE ? 0.04 : 0.62);
       b.className =
         'star star--' + it.tint +
         (it.kind === 'featured' ? ' star--featured' : '') +
@@ -526,15 +569,22 @@
       b.setAttribute('data-star', it.id);
       b.setAttribute('aria-label', String(it.text).slice(0, 40));
 
+      /* 闪烁参数：周期与相位随机，所以永远不同步 */
+      it.twSpeed = rand(0.7, 1.6);
+      it.twPhase = rand(0, Math.PI * 2);
       b.style.setProperty('--halo', it.halo.toFixed(2));
       b.style.setProperty('--tw-dur', rand(3.4, 7.6).toFixed(2) + 's');
       b.style.setProperty('--tw-delay', (-rand(0, 7)).toFixed(2) + 's');
       b.style.setProperty('--s', px(it.size));
 
       var body = span('star__body');
-      body.appendChild(span('star__halo'));
+      /* 手机上只给「会闪的」和亮星建光晕、只给亮星建星芒：
+         元素数从 327 降到 150 左右，暗星本来也就一两个像素。 */
+      if (!IS_MOBILE || it.live) body.appendChild(span('star__halo'));
       body.appendChild(span('star__core'));
-      body.appendChild(span('star__spark'));
+      if (!IS_MOBILE || it.kind === 'featured' || it.birthday) {
+        body.appendChild(span('star__spark'));
+      }
       b.appendChild(body);
 
       b.addEventListener('click', function () {

@@ -84,6 +84,12 @@
   }
 
   function boot() {
+    /* 手机：给 body 打个标记，样式表里据此做降级 */
+    if (window.matchMedia('(max-width: 820px)').matches ||
+        window.matchMedia('(pointer: coarse)').matches) {
+      document.body.classList.add('is-mobile');
+    }
+
     var night = document.querySelector('[data-night]');
     if (!night) return;
 

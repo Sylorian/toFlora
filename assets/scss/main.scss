@@ -349,6 +349,7 @@ button {
 }
 
 .sky__galaxy {
+  will-change: opacity;
   position: absolute;
   left: 50%;
   top: 46%;
@@ -824,6 +825,8 @@ button {
 
 /* 只动 opacity：早先还带 scale(0.9→1.12)，等于每帧重新栅格化一次径向渐变。
    实测这一条把开场帧数砍掉一半多、稳定帧率从 72 掉到 46。 */
+/* 星星闪：只动 opacity 的内核明暗，有自己的周期和相位。
+   每颗星的 --tw-dur / --tw-delay 由 JS 随机，所以永远不同步。 */
 @keyframes halo-breathe {
   0%,
   100% {
@@ -886,6 +889,7 @@ button {
 .night.is-focus /* 球心那团光：球体后面一团很淡的暖白光，26 秒呼吸一次。
    只动 opacity，静态图层，几乎不花钱。 */
 .sky__glow {
+  will-change: opacity;
   position: absolute;
   left: 50%;
   top: 46%;
@@ -967,7 +971,7 @@ rgba(255, 240, 214, 0.035) 0%,
 
 .name__word {
   position: relative;
-  perspective: 560px;
+  perspective: 470px;
   transform-style: preserve-3d;
   font-family: var(--thin);
   font-weight: 100;
@@ -1007,21 +1011,25 @@ rgba(255, 240, 214, 0.035) 0%,
 .name__word .ch {
   display: inline-block;
   margin: 0 0.07em;
-  transform: rotateY(calc(var(--u, 0) * var(--k, 1) * 20deg))
-    rotateX(calc(var(--v, 0) * var(--k, 1) * -14deg))
+  /* 空间感主要靠「前进 / 后退」：
+     每颗字按自己的权重在 Z 轴上前后错开（两端最大，中间几乎不动），
+     指针往右 → 右边的字退后、左边的字向前；指针往下 → 整排再往前压一点。
+     旋转只留一点点做辅助，不然会和纵深打架。 */
+  transform: rotateY(calc(var(--u, 0) * var(--k, 1) * 11deg))
+    rotateX(calc(var(--v, 0) * var(--k, 1) * -8deg))
     translate3d(
-      calc(var(--u, 0) * var(--w, 0) * -8px),
-      calc(var(--v, 0) * var(--w, 0) * 12px),
-      calc(var(--u, 0) * var(--w, 0) * -34px)
+      calc(var(--u, 0) * var(--w, 0) * -6px),
+      calc(var(--v, 0) * var(--w, 0) * 8px),
+      calc(var(--u, 0) * var(--w, 0) * 62px - var(--v, 0) * 16px)
     );
   transform-origin: 50% 50%;
-  /* 往后去的字暗一档 —— 近大远小的第二个线索 */
-  opacity: calc(1 - var(--u, 0) * var(--w, 0) * 0.22);
-  /* 投影两层：暗的做遮挡，暖的当漫射，都跟着倾角挪 */
-  text-shadow: calc(var(--u, 0) * var(--w, 0) * -4px)
-      calc(var(--v, 0) * var(--w, 0) * 7px) 10px rgba(0, 0, 0, 0.5),
-    calc(var(--u, 0) * var(--w, 0) * -10px)
-      calc(var(--v, 0) * var(--w, 0) * 10px) 26px rgba(255, 214, 168, 0.28);
+  /* 退后的字暗一档、放大一档：纵深和明暗一起变化，眼睛才信 */
+  opacity: calc(0.98 - var(--u, 0) * var(--w, 0) * 0.3);
+  /* 投影跟着深度挪：往前的字影子压下去，往后的字影子往上飘 */
+  text-shadow: calc(var(--u, 0) * var(--w, 0) * -5px)
+      calc(var(--v, 0) * var(--w, 0) * 6px) 12px rgba(0, 0, 0, 0.55),
+    calc(var(--u, 0) * var(--w, 0) * -14px)
+      calc(var(--v, 0) * var(--w, 0) * 12px) 30px rgba(255, 214, 168, 0.3);
   transition: transform 0.12s linear;
   will-change: transform;
 }
@@ -1590,4 +1598,40 @@ rgba(255, 240, 214, 0.035) 0%,
   .star__core,
   .star__spark,
   .star  }
+}
+
+/* ------------------------------------------------- 17. 手机端的降级 ---
+   窄屏 / 触摸设备（body 上有 is-mobile）：
+   去掉每个星核的 box-shadow（109 个 × 2 层阴影是手机的主要开销），
+   抽卡时的全屏 blur 换成压暗，色雾的 will-change 交给合成器。
+--------------------------------------------------------------------------- */
+.is-mobile .star__core {
+  box-shadow: none;
+}
+
+.is-mobile .night.is-focus .sky {
+  filter: brightness(0.6);
+}
+
+.is-mobile .night.is-focus .orb {
+  filter: brightness(0.55);
+}
+
+.is-mobile .star__spark {
+  display: none;
+}
+
+.is-mobile .star--featured .star__spark,
+.is-mobile .star--birthday .star__spark {
+  display: block;
+}
+
+/* 手机上：星尘不闪（26 个元素各跑一个动画），暗星的光晕也不呼吸 ——
+   一百来个并发的 CSS 动画正是低端机上卡顿的主因（实测样式重算是脚本的 20 倍）。 */
+.is-mobile .dust {
+  animation: none;
+}
+
+.is-mobile .star__halo {
+  animation: none;
 }
