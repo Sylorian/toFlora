@@ -88,8 +88,11 @@
 
       pointerX: -9999,
       pointerY: -9999,
+      parallax: { x: 0, y: 0, wx: -9, wy: -9 },
       tiltX: 0,
       tiltY: 0,
+      tiltXt: -9,
+      tiltYt: -9,
       gyroX: 0,
       gyroY: 0,
       gyroSeen: false,
@@ -437,6 +440,32 @@
         }
       }
 
+      /* 视差只给「to Flora」：鼠标位置（或陀螺仪倾角）→ -1..1，
+         平滑后写到 CSS 变量上。陀螺仪存在时以它为主。 */
+      var pvx = 0;
+      var pvy = 0;
+      if (state.gyroSeen) {
+        pvx = state.gyroY / 14;
+        pvy = state.gyroX / 14;
+      } else if (state.pointerX > -999) {
+        pvx = (state.pointerX / state.frame.w - 0.5) * 2;
+        pvy = (state.pointerY / state.frame.h - 0.5) * 2;
+      }
+      pvx = pvx < -1 ? -1 : pvx > 1 ? 1 : pvx;
+      pvy = pvy < -1 ? -1 : pvy > 1 ? 1 : pvy;
+      var pk = 1 - Math.exp(-dt * 3.4);
+      state.parallax.x += (pvx - state.parallax.x) * pk;
+      state.parallax.y += (pvy - state.parallax.y) * pk;
+      /* 变化小于 0.004 就不写：静止时省掉 7 个字的样式重算 */
+      if (dom.name &&
+          (Math.abs(state.parallax.x - state.parallax.wx) > 0.004 ||
+           Math.abs(state.parallax.y - state.parallax.wy) > 0.004)) {
+        state.parallax.wx = state.parallax.x;
+        state.parallax.wy = state.parallax.y;
+        dom.name.style.setProperty('--u', state.parallax.x.toFixed(3));
+        dom.name.style.setProperty('--v', state.parallax.y.toFixed(3));
+      }
+
       /* 卡片倾斜：有陀螺仪就跟手机姿态走（安卓），没有就跟着鼠标 */
       if (state.active && !state.reduced) {
         var tRx = 0;
@@ -456,8 +485,14 @@
         var kk = 1 - Math.exp(-dt * 9);
         state.tiltX += (tRx - state.tiltX) * kk;
         state.tiltY += (tRy - state.tiltY) * kk;
-        card.style.setProperty('--rx', state.tiltX.toFixed(2) + 'deg');
-        card.style.setProperty('--ry', state.tiltY.toFixed(2) + 'deg');
+        /* 同理：倾斜变化小于 0.03° 就不碰 DOM */
+        if (Math.abs(state.tiltX - state.tiltXt) > 0.03 ||
+            Math.abs(state.tiltY - state.tiltYt) > 0.03) {
+          state.tiltXt = state.tiltX;
+          state.tiltYt = state.tiltY;
+          card.style.setProperty('--rx', state.tiltX.toFixed(2) + 'deg');
+          card.style.setProperty('--ry', state.tiltY.toFixed(2) + 'deg');
+        }
       }
       render();
     }
@@ -718,6 +753,12 @@
       if (!it) return;
       if (state.pinned && state.active === it) { hide(); return; }
       show(it, true);
+    }
+
+    /* 名字和它下面那条线是两个元素，状态要一起切 */
+    function setNameClass(cls, on) {
+      if (dom.name) dom.name.classList.toggle(cls, on);
+      if (dom.tick) dom.tick.classList.toggle(cls, on);
     }
 
     /* ---------------------------------------------------------- 拖动 --- */
@@ -1116,7 +1157,7 @@
         card.classList.add('is-open', 'is-hero');
         link.classList.remove('is-on');
         sync();
-        if (dom.name) dom.name.classList.add('is-dim');
+        setNameClass('is-dim', true);
         /* 景深：球和银河糊掉、压暗，只留这颗星和卡片锐利 */
         if (nightEl) nightEl.classList.add('is-focus');
         if (dom.galaxy) dom.galaxy.classList.remove('is-lit');
@@ -1151,7 +1192,7 @@
       state.pinned = false;
       card.classList.remove('is-open', 'is-hero');
       link.classList.remove('is-on');
-      if (dom.name) dom.name.classList.remove('is-dim');
+      setNameClass('is-dim', false);
       if (nightEl) nightEl.classList.remove('is-focus');
       if (dom.galaxy) dom.galaxy.classList.remove('is-lit');
       sync();

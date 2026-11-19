@@ -53,8 +53,6 @@
 
   /* ---- 文字 ---------------------------------------------------------- */
   --text: #e9ecfa;
-  --dim: rgba(233, 236, 250, 0.6);
-  --faint: rgba(233, 236, 250, 0.34);
 
   /* ---- 字体 ---------------------------------------------------------- */
   --thin: "Raleway", "Helvetica Neue", "Segoe UI Light", "Segoe UI", system-ui,
@@ -286,6 +284,7 @@ button {
 }
 
 .sky__wash--purple {
+  will-change: transform, opacity;
   background: radial-gradient(
       54% 48% at 34% 32%,
       rgba(104, 62, 178, 0.55) 0%,
@@ -302,6 +301,7 @@ button {
 }
 
 .sky__wash--blue {
+  will-change: transform, opacity;
   background: radial-gradient(
       52% 46% at 64% 56%,
       rgba(50, 100, 196, 0.52) 0%,
@@ -607,25 +607,21 @@ button {
 }
 
 .star--gold {
-  --tint: var(--gold);
   --tint-soft: var(--gold-soft);
   --tint-far: rgba(255, 215, 161, 0.18);
 }
 
 .star--rose {
-  --tint: var(--rose);
   --tint-soft: var(--rose-soft);
   --tint-far: rgba(255, 182, 201, 0.16);
 }
 
 .star--sky {
-  --tint: var(--sky);
   --tint-soft: var(--sky-soft);
   --tint-far: rgba(185, 212, 255, 0.16);
 }
 
 .star--cream {
-  --tint: var(--cream);
   --tint-soft: var(--cream-soft);
   --tint-far: rgba(255, 241, 220, 0.16);
 }
@@ -716,9 +712,7 @@ button {
 
 /* ⑤ 两圈光环叠在一个伪元素上（border 一圈 + box-shadow 两圈），
       9 秒扩一次、比普通星慢一倍，所以看上去是「一波一波荡开」 */
-.star--birthday::after {
-  content: "";
-  position: absolute;
+.star  position: absolute;
   left: 50%;
   top: 50%;
   width: 300%;
@@ -889,8 +883,35 @@ button {
   filter: blur(7px) brightness(0.55) saturate(0.8);
 }
 
-.night.is-focus .name {
-  filter: blur(4px);
+.night.is-focus /* 球心那团光：球体后面一团很淡的暖白光，26 秒呼吸一次。
+   只动 opacity，静态图层，几乎不花钱。 */
+.sky__glow {
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  width: 118vmax;
+  height: 118vmax;
+  margin: -59vmax 0 0 -59vmax;
+  pointer-events: none;
+  background: radial-gradient(
+    circle,
+rgba(255, 240, 214, 0.035) 0%,
+    rgba(255, 242, 216, 0.15) 24%,
+    rgba(198, 212, 255, 0.07) 40%,
+    rgba(150, 170, 240, 0.025) 52%,
+    transparent 66%
+  );
+  animation: glow-breathe 26s ease-in-out infinite;
+}
+
+@keyframes glow-breathe {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 0.9;
+  }
 }
 
 /* ------------------------------------------------------- 4. to Flora ---
@@ -914,6 +935,7 @@ button {
 }
 
 .name__halo {
+  will-change: transform, opacity;
   position: absolute;
   left: 50%;
   top: 50%;
@@ -923,8 +945,8 @@ button {
   border-radius: 50%;
   background: radial-gradient(
     circle,
-    rgba(255, 215, 161, 0.13) 0%,
-    rgba(140, 170, 255, 0.05) 40%,
+    rgba(255, 215, 161, 0.15) 0%,
+    rgba(140, 170, 255, 0.08) 40%,
     transparent 68%
   );
   animation: name-halo 12s ease-in-out infinite;
@@ -945,13 +967,16 @@ button {
 
 .name__word {
   position: relative;
+  perspective: 560px;
+  transform-style: preserve-3d;
   font-family: var(--thin);
   font-weight: 100;
   font-size: clamp(32px, 6vw, 78px);
   line-height: 1.05;
-  letter-spacing: 0.14em;
+  /* 字距交给每个字自己的 margin，避免 inline-block 上叠加 letter-spacing */
+  letter-spacing: 0;
   /* 字距会把整行往右推半个字距，补回来才是真正居中 */
-  text-indent: 0.14em;
+  text-indent: 0;
   color: #fdf9f1;
   text-shadow: 0 0 22px rgba(255, 215, 161, 0.3),
     0 0 64px rgba(150, 180, 255, 0.2);
@@ -969,18 +994,57 @@ button {
   }
   100% {
     opacity: 1;
-    letter-spacing: 0.14em;
-    text-indent: 0.14em;
+    letter-spacing: 0;
+    text-indent: 0;
     filter: blur(0);
     transform: translateY(0);
   }
 }
 
+/* 每个字单独倾斜：rotateY + rotateX + translateZ 三件事一起做。
+   --u/--v 是 -1..1 的归一化指针位置（JS 写），--w 是字的左右权重，
+   --k 是这字的幅度（两端最大、中间最小）。 */
+.name__word .ch {
+  display: inline-block;
+  margin: 0 0.07em;
+  transform: rotateY(calc(var(--u, 0) * var(--k, 1) * 20deg))
+    rotateX(calc(var(--v, 0) * var(--k, 1) * -14deg))
+    translate3d(
+      calc(var(--u, 0) * var(--w, 0) * -8px),
+      calc(var(--v, 0) * var(--w, 0) * 12px),
+      calc(var(--u, 0) * var(--w, 0) * -34px)
+    );
+  transform-origin: 50% 50%;
+  /* 往后去的字暗一档 —— 近大远小的第二个线索 */
+  opacity: calc(1 - var(--u, 0) * var(--w, 0) * 0.22);
+  /* 投影两层：暗的做遮挡，暖的当漫射，都跟着倾角挪 */
+  text-shadow: calc(var(--u, 0) * var(--w, 0) * -4px)
+      calc(var(--v, 0) * var(--w, 0) * 7px) 10px rgba(0, 0, 0, 0.5),
+    calc(var(--u, 0) * var(--w, 0) * -10px)
+      calc(var(--v, 0) * var(--w, 0) * 10px) 26px rgba(255, 214, 168, 0.28);
+  transition: transform 0.12s linear;
+  will-change: transform;
+}
+
+/* F 前面多留一点空：等于原来那个空格 */
+.name__word .ch.gap {
+  margin-left: 0.34em;
+}
+
 .name__tick {
+  /* 从 .name 里拿出来：它不参与逐字倾斜，就是一条平的线 */
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 46%;
+  /* 不用 left:50%+translate 居中：tick-in 动画本身在动 transform（scaleX），
+     会把 translate 覆盖掉，线就偏右半个身位。margin:auto 居中跟动画互不干扰。 */
+  margin: clamp(52px, 6.6vh, 74px) auto 0;
   display: block;
   width: min(38vw, 220px);
   height: 1px;
-  margin: clamp(10px, 1.6vh, 20px) auto 0;
+  pointer-events: none;
+  z-index: 7;
   background: linear-gradient(
     90deg,
     transparent,
@@ -1004,9 +1068,17 @@ button {
 }
 
 /* 抽到流星时，球心的名字退到很淡：画面让给那一句话 */
+/* 展示卡片时，背景的 to Flora 整个收起来 */
+.name__tick.is-dim,
+.name__tick.is-away {
+  /* 横线自己有 tick-in 动画（both 填充），普通声明压不住，得 !important */
+  opacity: 0 !important;
+  transition: opacity 0.36s var(--ease);
+}
+
 .name.is-dim {
-  opacity: 0.1;
-  transition: opacity 0.7s var(--ease);
+  opacity: 0;
+  transition: opacity 0.36s var(--ease);
 }
 
 /* ------------------------------------------------------------- 5. 卡片 --- */
@@ -1154,6 +1226,10 @@ button {
 
 .sound[aria-pressed="false"] .sound__off {
   display: block;
+}
+
+.sound--music {
+  left: clamp(60px, 6.6vw, 86px);
 }
 
 .sound:hover,
@@ -1513,12 +1589,5 @@ button {
   .star__halo,
   .star__core,
   .star__spark,
-  .star--birthday::after,
-  .dust,
-  .sky__dust,
-  .card__inner,
-  .link,
-    .meteor {
-    display: none;
-  }
+  .star  }
 }

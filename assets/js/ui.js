@@ -90,6 +90,7 @@
     var sky = NS.createSky({
       night: night,
       name: document.querySelector('[data-name]'),
+      tick: document.querySelector('[data-tick]'),
       orb: document.querySelector('[data-orb]'),
       shade: document.querySelector('[data-shade]'),
       dust: document.querySelector('[data-dust]'),
@@ -137,6 +138,152 @@
         });
       });
     }
+
+    /* ------------------------------------------------ 背景音：钢琴 ---
+       不用音频文件：一段原创的 8 小节，三个正弦泛音的单键音色，
+       按谱面时间逐个排；循环无缝。 */
+
+    var MUSIC = {
+      ctx: null,
+      master: null,
+      on: true,
+      timer: 0,
+      step: 0,
+      idx: 0,
+      t0: 0,
+      started: false
+    };
+
+    /* 最基础的钢琴单键：三个正弦泛音 + 6ms 起音 + 指数衰减。 */
+    /* 原创的一小段：F 大调，70 BPM，8 小节（27.4 秒循环）。
+       右手是一条能哼的旋律 —— 从三音 A4 起，走到 Dm 上落下来，
+       第 5 小节推到 A5 是全曲最高点，第 8 小节收回 C5，正好接回开头。
+       左手是根 · 五 · 八 · 五的四分音，只在下面托着。 */
+    var LOOP = 27.429;
+    var SCORE = [
+      [0.0,87.31,0.3,0.81],[0.0,440.0,0.5,1.29],[0.857,130.81,0.3,0.81],[1.286,523.25,0.5,0.43],[1.714,174.61,0.3,0.81],
+      [1.714,698.46,0.5,1.71],[2.571,130.81,0.3,0.81],[3.429,146.83,0.3,0.81],[3.429,659.26,0.5,1.29],[4.286,220.0,0.3,0.81],
+      [4.714,587.33,0.5,0.43],[5.143,146.83,0.3,0.81],[5.143,523.25,0.5,1.71],[6.0,110.0,0.3,0.81],[6.857,116.54,0.3,0.81],
+      [6.857,587.33,0.5,0.86],[7.714,174.61,0.3,0.81],[7.714,698.46,0.5,0.86],[8.571,233.08,0.3,0.81],[8.571,587.33,0.5,0.86],
+      [9.429,174.61,0.3,0.81],[9.429,466.16,0.5,0.86],[10.286,130.81,0.3,0.81],[10.286,523.25,0.5,1.71],[11.143,196.0,0.3,0.81],
+      [12.0,130.81,0.3,0.81],[12.0,392.0,0.5,1.71],[12.857,98.0,0.3,0.81],[13.714,110.0,0.3,0.81],[13.714,440.0,0.5,0.86],
+      [14.571,164.81,0.3,0.81],[14.571,523.25,0.5,0.86],[15.429,220.0,0.3,0.81],[15.429,698.46,0.5,1.29],[16.286,164.81,0.3,0.81],
+      [16.714,880.0,0.5,0.43],[17.143,146.83,0.3,0.81],[17.143,783.99,0.5,1.71],[18.0,220.0,0.3,0.81],[18.857,146.83,0.3,0.81],
+      [18.857,698.46,0.5,1.71],[19.714,110.0,0.3,0.81],[20.571,116.54,0.3,0.81],[20.571,587.33,0.5,0.86],[21.429,174.61,0.3,0.81],
+      [21.429,698.46,0.5,0.86],[22.286,233.08,0.3,0.81],[22.286,659.26,0.5,1.71],[23.143,174.61,0.3,0.81],[24.0,130.81,0.3,0.81],
+      [24.0,587.33,0.5,0.86],[24.857,196.0,0.3,0.81],[24.857,523.25,0.5,2.57],[25.714,130.81,0.3,0.81],[26.571,98.0,0.3,0.81],
+    ];
+
+    function pianoNote(freq, when, gain, dur) {
+      var ctx = MUSIC.ctx;
+      if (!ctx) return;
+      var g0 = typeof gain === 'number' ? gain : 0.4;
+      var len = typeof dur === 'number' ? dur : 0.9;
+
+      var out = ctx.createGain();
+      out.gain.value = 1;
+      out.connect(MUSIC.master);
+
+      var partials = [[1, 1.0], [2, 0.3], [3, 0.1]];
+      for (var i = 0; i < partials.length; i++) {
+        var o = ctx.createOscillator();
+        o.type = 'sine';
+        o.frequency.value = freq * partials[i][0];
+        var g = ctx.createGain();
+        var peak = 0.0001 + partials[i][1] * g0 * 0.34;
+        var decay = len + 0.55;
+        g.gain.setValueAtTime(0.0001, when);
+        g.gain.exponentialRampToValueAtTime(peak, when + 0.006);
+        g.gain.exponentialRampToValueAtTime(0.0001, when + decay);
+        o.connect(g);
+        g.connect(out);
+        o.start(when);
+        o.stop(when + decay + 0.05);
+      }
+    }
+
+    function musicTick() {
+      if (!MUSIC.ctx || !MUSIC.on) return;
+      var now = MUSIC.ctx.currentTime;
+      if (!MUSIC.t0) MUSIC.t0 = now + 0.08;
+      /* 标签页挂起过就别追了，直接从这一秒重新开始 */
+      if (now - MUSIC.t0 > LOOP + 2) {
+        MUSIC.t0 = now + 0.05;
+        MUSIC.idx = 0;
+      }
+      var elapsed = now - MUSIC.t0;
+
+      while (MUSIC.idx < SCORE.length) {
+        var note = SCORE[MUSIC.idx];
+        if (note[0] - elapsed > 0.45) break;
+        var when = MUSIC.t0 + note[0];
+        if (when > now) {
+          pianoNote(note[1], when, note[2], note[3]);
+        }
+        MUSIC.idx++;
+      }
+
+      if (MUSIC.idx >= SCORE.length) {
+        MUSIC.idx = 0;
+        MUSIC.t0 += LOOP;
+      }
+    }
+
+    function musicStart() {
+      if (MUSIC.started || !MUSIC.on) return;
+      try {
+        var Ctx = window.AudioContext || window.webkitAudioContext;
+        if (!Ctx) return;
+        if (!MUSIC.ctx) MUSIC.ctx = new Ctx();
+        if (MUSIC.ctx.state === 'suspended') MUSIC.ctx.resume();
+        if (!MUSIC.master) {
+          var ctx = MUSIC.ctx;
+          MUSIC.master = ctx.createGain();
+          MUSIC.master.gain.value = 0.16;
+          MUSIC.master.connect(ctx.destination);
+        }
+        MUSIC.started = true;
+        MUSIC.idx = 0;
+        MUSIC.t0 = 0;
+        musicTick();
+        MUSIC.timer = window.setInterval(musicTick, 200);
+      } catch (e) {
+        /* 没有声音也不影响别的 */
+      }
+    }
+
+    function musicStop() {
+      MUSIC.started = false;
+      window.clearInterval(MUSIC.timer);
+      MUSIC.timer = 0;
+    }
+
+    /* 背景音开关：默认开，记住选择；第一次点屏幕/甩球时才真正开始 */
+    MUSIC.on = load('flora.music.v1', true) !== false;
+    var musicBtn = document.querySelector('[data-music]');
+    function paintMusic() {
+      if (!musicBtn) return;
+      musicBtn.setAttribute('aria-pressed', MUSIC.on ? 'true' : 'false');
+      musicBtn.setAttribute('aria-label', MUSIC.on ? '关闭背景音' : '打开背景音');
+    }
+    paintMusic();
+    if (musicBtn) {
+      musicBtn.addEventListener('click', function () {
+        MUSIC.on = !MUSIC.on;
+        save('flora.music.v1', MUSIC.on);
+        paintMusic();
+        if (MUSIC.on) musicStart();
+        else musicStop();
+      });
+    }
+    /* 浏览器不许自动播放：等第一个手势 */
+    function armMusic() {
+      window.removeEventListener('pointerdown', armMusic, true);
+      window.removeEventListener('keydown', armMusic, true);
+      if (MUSIC.on) musicStart();
+    }
+    window.addEventListener('pointerdown', armMusic, true);
+    window.addEventListener('keydown', armMusic, true);
 
     /* 风铃开关 */
     var soundBtn = document.querySelector('[data-sound]');
@@ -341,6 +488,41 @@
         }, 4000);
       }, 'image/png');
     }
+
+    /* ------------------------------------------- 开场：落款 ---
+       只有「Sylorian ／ 献给 Flora」一行，没有别的说明。
+       当天第一次看 2.8 秒，之后 1.2 秒；点任意处 / Esc 可以提前收。 */
+
+    var intro = document.querySelector('[data-intro]');
+    var nameEl = document.querySelector('[data-name]');
+    var introDone = false;
+    var introTimer = 0;
+
+    function openIntro() {
+      if (!intro || introDone) return;
+      intro.classList.add('is-open');
+      intro.setAttribute('aria-hidden', 'false');
+      if (nameEl) nameEl.classList.add('is-away');
+      var tickEl = document.querySelector('[data-tick]');
+      if (tickEl) tickEl.classList.add('is-away');
+      var today = new Date().toISOString().slice(0, 10);
+      var first = load('flora.seen.v1', '') !== today;
+      save('flora.seen.v1', today);
+      introTimer = window.setTimeout(closeIntro, first ? 2800 : 1200);
+    }
+
+    function closeIntro() {
+      if (!intro || introDone) return;
+      introDone = true;
+      window.clearTimeout(introTimer);
+      intro.classList.remove('is-open');
+      intro.setAttribute('aria-hidden', 'true');
+      if (nameEl) nameEl.classList.remove('is-away');
+      var tickEl2 = document.querySelector('[data-tick]');
+      if (tickEl2) tickEl2.classList.remove('is-away');
+    }
+
+    if (intro) window.setTimeout(openIntro, 1700);
 
     /* ------------------------------------------------- 点空白处收起 --- */
 
