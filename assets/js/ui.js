@@ -171,9 +171,12 @@
       saveBtn.addEventListener('click', function () {
         if (!sky.isHero()) return;
         var t = document.querySelector('[data-card-text]');
-        if (!t || !t.textContent) return;
+        /* 以球体里记着的句子为准；DOM 文本只做兜底 */
+        var verse = sky.currentVerse ? sky.currentVerse() : '';
+        if (!verse) verse = t ? (t.textContent || '').trim() : '';
+        if (!verse) return;
         var spot = sky.heroSpot ? sky.heroSpot() : null;
-        saveBookmark(t.textContent, spot).catch(function (e) {
+        saveBookmark(verse, spot).catch(function (e) {
           console.error('bookmark failed', e);
         });
       });
@@ -569,10 +572,16 @@
       g.globalCompositeOperation = 'source-over';
 
       /* ---------- 下载 ---------- */
-      var name =
-        'to-flora-' + d.getFullYear() + '-' +
-        ('0' + (d.getMonth() + 1)).slice(-2) + '-' +
-        ('0' + d.getDate()).slice(-2) + '.png';
+      var stamp =
+        '' + d.getFullYear() +
+        ('0' + (d.getMonth() + 1)).slice(-2) +
+        ('0' + d.getDate()).slice(-2) + '-' +
+        ('0' + d.getHours()).slice(-2) +
+        ('0' + d.getMinutes()).slice(-2) +
+        ('0' + d.getSeconds()).slice(-2);
+      var hh = 0;
+      for (var q = 0; q < verse.length; q++) hh = (hh * 31 + verse.charCodeAt(q)) % 99991;
+      var name = 'to-flora-' + stamp + '-' + ('0000' + hh.toString(36)).slice(-4) + '.png';
 
       if (!c.toBlob) return;
       c.toBlob(function (blob) {

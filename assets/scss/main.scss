@@ -676,6 +676,15 @@ button {
 }
 
 .star {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  color: inherit;
+  font: inherit;
+  -webkit-tap-highlight-color: transparent;
   position: absolute;
   left: 0;
   top: 0;
@@ -1889,4 +1898,22 @@ rgba(255, 240, 214, 0.024) 0%,
     opacity: 0;
     transform: translate3d(var(--tx, 0), var(--ty, 0), 0) scale(0.3);
   }
+}
+
+/* 自带浏览器（尤其深色主题）会给 <button> 画自己的底，星星会变成黑点。
+   统一清掉系统外观，只保留我们自己的背景。 */
+.card__save,
+.sound,
+.intro__close,
+.star {
+  -webkit-appearance: none;
+  appearance: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.card__save,
+.sound,
+.intro__close {
+  background-color: transparent;
+  border: 0;
 }

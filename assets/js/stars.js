@@ -223,7 +223,7 @@ var seq = 0;             /* 句子没有 id，自己发一个 */
     function paintField(canvas, count, size, alpha, cross, dim) {
       if (!canvas) return;
       var sp = sprites();
-      var dpr = Math.min(IS_MOBILE ? 1.5 : 2, window.devicePixelRatio || 1);
+      var dpr = Math.min(IS_MOBILE ? 1.25 : 2, window.devicePixelRatio || 1);
       var w = canvas.clientWidth || state.frame.w + 52;
       var h = canvas.clientHeight || state.frame.h + 52;
       if (canvas.width !== Math.round(w * dpr) ||
@@ -287,7 +287,7 @@ var seq = 0;             /* 句子没有 id，自己发一个 */
       );
       /* 星尘从 170 降到 96：密度现在交给星野贴图（近千颗、零帧成本），
          这一层只负责「会闪的那几颗」。实测每减 70 个元素约 +6fps。 */
-      var count = IS_MOBILE ? 26 : w < 700 ? 48 : 96;
+      var count = IS_MOBILE ? 18 : w < 700 ? 48 : 96;
       var frag = document.createDocumentFragment();
 
       for (var i = 0; i < count; i++) {
@@ -1649,6 +1649,8 @@ var seq = 0;             /* 句子没有 id，自己发一个 */
       justDragged: justDragged,
       isHero: function () { return !!state.hero; },
       heroSpot: function () { return state.hero ? state.hero.heroSpot : null; },
+      /* 书签以这个为准：DOM 里的文字可能被别的东西改过/还没写完 */
+      currentVerse: function () { return state.hero ? state.hero.text : ''; },
       state: state
     };
   }
