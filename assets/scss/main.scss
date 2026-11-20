@@ -287,14 +287,14 @@ button {
   will-change: transform, opacity;
   background: radial-gradient(
       54% 48% at 34% 32%,
-      rgba(104, 62, 178, 0.55) 0%,
-      rgba(74, 40, 138, 0.24) 42%,
+      rgba(112, 56, 204, 0.6) 0%,
+      rgba(84, 36, 164, 0.27) 42%,
       transparent 74%
     ),
     radial-gradient(
       44% 40% at 74% 70%,
-      rgba(132, 76, 200, 0.36) 0%,
-      rgba(92, 52, 160, 0.14) 46%,
+      rgba(146, 68, 224, 0.4) 0%,
+      rgba(104, 44, 184, 0.17) 46%,
       transparent 72%
     );
   animation: wash-purple 13s ease-in-out infinite;
@@ -304,14 +304,14 @@ button {
   will-change: transform, opacity;
   background: radial-gradient(
       52% 46% at 64% 56%,
-      rgba(50, 100, 196, 0.52) 0%,
-      rgba(30, 62, 140, 0.22) 44%,
+      rgba(38, 104, 224, 0.58) 0%,
+      rgba(22, 60, 168, 0.26) 44%,
       transparent 76%
     ),
     radial-gradient(
       40% 38% at 28% 44%,
-      rgba(62, 128, 208, 0.3) 0%,
-      rgba(38, 84, 160, 0.12) 48%,
+      rgba(46, 132, 236, 0.35) 0%,
+      rgba(28, 88, 192, 0.15) 48%,
       transparent 70%
     );
   animation: wash-blue 13s ease-in-out infinite;
@@ -348,19 +348,181 @@ button {
   }
 }
 
+/* ------------------------------------------------- 3c. 背景亮点 ---
+   天上偶尔「亮一下」—— 一个带十字星芒的小点，1.5 秒里亮起再化掉。
+   复用 4 个元素，不新建；动画只跑在被点亮的那一个上。
+--------------------------------------------------------------------------- */
+.sky__glints {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.glint {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  will-change: transform, opacity;
+}
+
+.glint::before {
+  content: "";
+  position: absolute;
+  left: -2.5px;
+  top: -2.5px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 9px 2px rgba(210, 226, 255, 0.8),
+    0 0 24px 7px rgba(150, 180, 255, 0.32);
+}
+
+.glint::after {
+  content: "";
+  position: absolute;
+  left: -15px;
+  top: -15px;
+  width: 30px;
+  height: 30px;
+  background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.6) 50%,
+      transparent
+    )
+      center / 100% 1px no-repeat,
+    linear-gradient(0deg, transparent, rgba(255, 255, 255, 0.6) 50%, transparent)
+      center / 1px 100% no-repeat;
+  opacity: 0.85;
+}
+
+.glint.is-on {
+  animation: glint 1.5s ease-out forwards;
+}
+
+@keyframes glint {
+  0% {
+    opacity: 0;
+    transform: translate3d(var(--gx, 0px), var(--gy, 0px), 0) scale(0.35);
+  }
+  12% {
+    opacity: 1;
+    transform: translate3d(var(--gx, 0px), var(--gy, 0px), 0) scale(1);
+  }
+  48% {
+    opacity: 0.7;
+    transform: translate3d(var(--gx, 0px), var(--gy, 0px), 0) scale(1.12);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(var(--gx, 0px), var(--gy, 0px), 0) scale(0.85);
+  }
+}
+
+/* 亮点的位置靠 translate，scale 在 keyframes 里会覆盖 transform，
+   所以这里把位移放在变量里、由 keyframes 一并带上 */
+
+/* ------------------------------------------------- 3b. 流动的模糊 ---
+   四团半径几百像素的柔光，各自用不同周期在画面里缓慢漂移。
+   它们没有硬边（纯径向渐变），所以看上去是「模糊本身在流动」，
+   而不是一张图在平移。整层再叠一个很小的视差偏移（--px/--py）。
+--------------------------------------------------------------------------- */
+.sky__flow {
+  position: absolute;
+  inset: -10%;
+  overflow: hidden;
+  pointer-events: none;
+  transform: translate3d(calc(var(--px, 0) * 26px), calc(var(--py, 0) * 20px), 0);
+  transition: transform 0.25s linear;
+}
+
+.blob {
+  position: absolute;
+  display: block;
+  border-radius: 50%;
+  will-change: transform;
+}
+
+.blob--1 {
+  left: -10%;
+  top: 34%;
+  width: 52vmax;
+  height: 52vmax;
+  background: radial-gradient(
+    circle,
+    rgba(138, 82, 236, 0.16) 0%,
+    rgba(108, 66, 208, 0.11) 38%,
+    transparent 68%
+  );
+  animation: blob-flow-a 74s ease-in-out infinite;
+}
+
+.blob--2 {
+  right: -12%;
+  top: 6%;
+  width: 46vmax;
+  height: 46vmax;
+  background: radial-gradient(
+    circle,
+    rgba(56, 128, 240, 0.15) 0%,
+    rgba(46, 106, 214, 0.11) 40%,
+    transparent 70%
+  );
+  animation: blob-flow-b 92s ease-in-out infinite;
+}
+
+@keyframes blob-flow-a {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  33% {
+    transform: translate3d(5%, 3.5%, 0);
+  }
+  66% {
+    transform: translate3d(-2.5%, 6%, 0);
+  }
+}
+
+@keyframes blob-flow-b {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  40% {
+    transform: translate3d(-6%, 4%, 0);
+  }
+  70% {
+    transform: translate3d(-1.5%, -3.5%, 0);
+  }
+}
+
+/* 手机上不跑这四团（省电）；银河的漂移也停掉 */
+.is-mobile .blob,
+.is-mobile .gx {
+  animation: none !important;
+}
+
 .sky__galaxy {
   will-change: opacity;
   position: absolute;
   left: 50%;
   top: 46%;
-  width: 128vmax;
-  height: 46vmax;
+  width: 132vmax;
+  height: 38vmax;
   margin: 0;
   transform-origin: 50% 50%;
   transform: translate(-50%, -50%) rotate(-22deg);
   pointer-events: none;
   transition: filter 0.9s var(--ease);
 }
+
 
 /* 三层都铺满带子，靠各自的渐变形状区分。
    注意三点都是刻意的性能取舍：
@@ -377,8 +539,8 @@ button {
 .gx--glow {
   background: radial-gradient(
     56% 42% at 50% 50%,
-    rgba(204, 218, 255, 0.26) 0%,
-    rgba(152, 170, 226, 0.11) 40%,
+    rgba(206, 220, 255, 0.29) 0%,
+    rgba(146, 168, 240, 0.13) 40%,
     transparent 74%
   ),
     radial-gradient(
@@ -394,39 +556,34 @@ button {
 .gx--core {
   background: radial-gradient(
     30% 22% at 50% 50%,
-    rgba(238, 240, 255, 0.3) 0%,
-    rgba(188, 178, 242, 0.12) 46%,
+    rgba(240, 242, 255, 0.34) 0%,
+    rgba(190, 172, 250, 0.15) 46%,
     transparent 76%
-  ),
-    radial-gradient(
-      22% 7% at 50% 50%,
-      rgba(255, 250, 246, 0.22) 0%,
-      transparent 76%
-    );
+  );
   animation: gx-breathe 26s ease-in-out 2.5s infinite;
 }
 
-/* 尘埃带：两块压暗的椭圆，把光带切出层次（不用条纹 + 遮罩） */
+/* 尘埃：最细的一层，给带子一点颗粒 */
 .gx--dust {
   background: radial-gradient(
-      24% 34% at 39% 47%,
-      rgba(4, 6, 16, 0.55) 0%,
-      rgba(4, 6, 16, 0.2) 55%,
-      transparent 76%
-    ),
-    radial-gradient(
-      16% 26% at 60% 54%,
-      rgba(4, 6, 16, 0.42) 0%,
-      transparent 72%
-    );
-  opacity: 0.85;
+    24% 16% at 50% 50%,
+    rgba(150, 170, 230, 0.05) 0%,
+    rgba(110, 130, 200, 0.02) 54%,
+    transparent 84%
+  );
   animation: gx-breathe 26s ease-in-out 1.2s infinite;
 }
 
+/* 银河三层改成「线性渐变的横带」——
+   之前的径向椭圆换在 132vmax 的画布上根本读不出形状。
+   每层都是：中间亮一条、上下渐隐、两端用 mask 渐隐。 */
+/* 外辉光：最宽最淡，从 6% 就开始起雾 */
+/* 内核：窄、亮、偏冷白 —— 「芯」就是它 */
+/* 尘埃：略微不均的暗纹，让带子有质感 */
 @keyframes gx-breathe {
   0%,
   100% {
-    opacity: 0.52;
+    opacity: 0.55;
   }
   50% {
     opacity: 1;
@@ -436,11 +593,6 @@ button {
 /* 抽到一颗流星时，银河亮一档 —— 整片天回应这一次 */
 .sky__galaxy.is-lit {
   filter: brightness(1.42) saturate(1.08);
-}
-
-/* 甩球时：银河被「搅动」了 */
-.sky__galaxy.is-stirred {
-  filter: brightness(1.3) saturate(1.12);
 }
 
 /* 压暗的繁星底纹：两层不同尺度，视差系数不同，转动时就有纵深 */
@@ -459,11 +611,13 @@ button {
 
 .sky__field--far {
   transform: none;
+  opacity: 0.86;
 }
 
 /* 近层的「淡」已经乘进像素里了，不再用 opacity（少一个合成层） */
 .sky__field--near {
   transform: none;
+  opacity: 0.86;
 }
 
 /* 地平线：底部一层冷紫薄雾，把下半屏从「纯黑」里拉回来 */
@@ -500,11 +654,11 @@ button {
 }
 
 /* 球的呼吸：0.6% 的缩放，肉眼几乎看不出，但整颗球不再像一张静图 */
-.orb {
-}
-
 /* 球体的体积感：左上一点高光、边缘沉下去。
    没有这层，球面上的均匀分布投影出来只是一个圈，看不出是「一颗球」。 */
+/* 轮廓光（旧）：球体外缘一圈亮边，亮的那段跟着光源方向转。
+   用 conic-gradient 做弧 + mask 只留最外圈，再整体 rotate —— 只动 transform，
+   不重绘渐变。 */
 .orb__shade {
   position: absolute;
   border-radius: 50%;
@@ -572,8 +726,6 @@ button {
 
 /* 会呼吸的那一部分星（约一半 + 全部访客星） */
 .star--live .star__halo {
-  animation: halo-breathe var(--tw-dur, 6s) ease-in-out var(--tw-delay, 0s)
-    infinite;
 }
 
 .star__core {
@@ -827,16 +979,6 @@ button {
    实测这一条把开场帧数砍掉一半多、稳定帧率从 72 掉到 46。 */
 /* 星星闪：只动 opacity 的内核明暗，有自己的周期和相位。
    每颗星的 --tw-dur / --tw-delay 由 JS 随机，所以永远不同步。 */
-@keyframes halo-breathe {
-  0%,
-  100% {
-    opacity: calc(var(--halo, 0.55) * 0.58);
-  }
-  50% {
-    opacity: var(--halo, 0.55);
-  }
-}
-
 @keyframes ring-pulse {
   0% {
     opacity: 0.55;
@@ -899,9 +1041,9 @@ button {
   pointer-events: none;
   background: radial-gradient(
     circle,
-rgba(255, 240, 214, 0.035) 0%,
-    rgba(255, 242, 216, 0.15) 24%,
-    rgba(198, 212, 255, 0.07) 40%,
+rgba(255, 240, 214, 0.024) 0%,
+    rgba(255, 242, 216, 0.1) 24%,
+    rgba(198, 212, 255, 0.045) 40%,
     rgba(150, 170, 240, 0.025) 52%,
     transparent 66%
   );
@@ -1155,6 +1297,30 @@ rgba(255, 240, 214, 0.035) 0%,
   opacity: 0;
   transform: translateY(10px) scale(0.96);
   transition: opacity 0.34s ease, transform 0.46s var(--ease);
+}
+
+/* 卡片内部受光：一团跟着光源方向走的暖光（颜色取自那颗星本身的色），
+   对面再加一层很淡的冷影 —— 于是卡片内部的明暗和方向会随光变。
+   光源方向由 JS 每帧写 --clx/--cly（受光侧）和 --cdx/--cdy（背光侧）。 */
+.card__inner::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(
+      circle at var(--clx, 72%) var(--cly, 18%),
+      rgba(var(--ctint, 255, 215, 161), 0.17) 0%,
+      rgba(var(--ctint, 255, 215, 161), 0.05) 34%,
+      transparent 62%
+    ),
+    radial-gradient(
+      circle at var(--cdx, 18%) var(--cdy, 86%),
+      rgba(6, 10, 26, 0.4) 0%,
+      rgba(6, 10, 26, 0.12) 40%,
+      transparent 70%
+    );
+  transition: background 0.25s linear;
 }
 
 .card.is-open .card__inner {
@@ -1445,6 +1611,54 @@ rgba(255, 240, 214, 0.035) 0%,
   box-shadow: 0 0 8px 2px rgba(220, 235, 255, 0.85);
 }
 
+/* 流星划过时点亮周围的那团光：只动 opacity（静态渐变不会每帧重绘）。
+   半径比拖尾大一个量级，所以看起来像它把夜空照亮了一片。 */
+.meteor__light {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 380px;
+  height: 380px;
+  margin: -190px 0 0 -190px;
+  border-radius: 50%;
+  pointer-events: none;
+  background: radial-gradient(
+    circle,
+    rgba(226, 238, 255, 0.09) 0%,
+    rgba(198, 216, 255, 0.04) 30%,
+    rgba(170, 190, 255, 0.015) 52%,
+    transparent 70%
+  );
+  opacity: 0;
+  will-change: opacity;
+  animation: meteor-light var(--d, 1600ms) ease-out both;
+}
+
+.meteor--shower .meteor__light {
+  background: radial-gradient(
+    circle,
+    rgba(255, 232, 200, 0.1) 0%,
+    rgba(255, 214, 168, 0.045) 30%,
+    rgba(255, 200, 150, 0.015) 54%,
+    transparent 72%
+  );
+}
+
+@keyframes meteor-light {
+  0% {
+    opacity: 0;
+  }
+  14% {
+    opacity: 0.6;
+  }
+  58% {
+    opacity: 0.34;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
 /* 抽签时那一场：更长、更亮、偏暖，密度靠 JS 排期自然堆上来 */
 .meteor--shower .meteor__trail {
   height: 2px;
@@ -1634,4 +1848,43 @@ rgba(255, 240, 214, 0.035) 0%,
 
 .is-mobile .star__halo {
   animation: none;
+}
+
+/* 手机上 backdrop-filter 全屏太贵，直接关掉这层景深 */
+.is-mobile /* 抽签时整个天空已经在被模糊 + 压暗，这一层再叠一次就会在退出时出现断层。
+   干脆让它和景深一起淡掉。 */
+.night.is-focus 
+/* 飞星身后的残影：几颗小光点，300ms 内缩掉。
+   复用 7 个元素，不新建。 */
+.flytrail {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 10px;
+  height: 10px;
+  margin: -5px 0 0 -5px;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 899;
+  opacity: 0;
+  background: radial-gradient(
+    circle,
+    rgba(255, 252, 244, 0.85) 0%,
+    rgba(255, 226, 186, 0.35) 40%,
+    transparent 72%
+  );
+}
+
+.flytrail.is-on {
+  animation: flytrail 340ms ease-out forwards;
+}
+
+@keyframes flytrail {
+  0% {
+    opacity: 0.85;
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(var(--tx, 0), var(--ty, 0), 0) scale(0.3);
+  }
 }

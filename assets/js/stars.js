@@ -95,6 +95,13 @@ var seq = 0;             /* 句子没有 id，自己发一个 */
       pointerX: -9999,
       pointerY: -9999,
       parallax: { x: 0, y: 0, wx: -9, wy: -9 },
+      lights: [],
+      rimX: -9999,
+      rimY: -9999,
+      cardLx: -9999,
+      cardLy: -9999,
+      lightPx: -9999,
+      lightPy: -9999,
       tiltX: 0,
       tiltY: 0,
       tiltXt: -9,
@@ -341,6 +348,28 @@ var seq = 0;             /* 句子没有 id，自己发一个 */
     }
 
     function render() {
+      /* 先把这一帧的光源算出来：球面受光方向 + 每条流星此刻的头部 */
+      var nowMs = performance.now();
+      /* 球体的光跟着鼠标（手机是陀螺仪倾角）走：
+         受光点、边缘光、方向光都吃这一个方向。 */
+      var lamX = state.parallax.x;
+      var lamY = state.parallax.y;
+      /* 受光点：光方向投在球面上的那个位置，那里的星最亮 */
+      var litX = state.cx + lamX * state.radius * 0.62;
+      var litY = state.cy + lamY * state.radius * 0.62;
+      var litR2 = Math.pow(state.radius * 0.62, 2);
+      var lightList = [];
+      for (var lk = 0; lk < state.lights.length; lk++) {
+        var LL = state.lights[lk];
+        var pr = (nowMs - LL.t0) / LL.dur;
+        if (pr < 0 || pr > 1) continue;
+        lightList.push({
+          x: LL.x + LL.ax * LL.len * pr,
+          y: LL.y + LL.ay * LL.len * pr,
+          r2: 230 * 230
+        });
+      }
+
       var pitch = clamp(state.pitch + state.drift, -1.05, 1.05);
       COS.y = Math.cos(state.yaw);
       SIN.y = Math.sin(state.yaw);
@@ -360,6 +389,47 @@ var seq = 0;             /* 句子没有 id，自己发一个 */
         if (state.dimOthers && it !== state.active) {
           scale *= 0.985;
           op *= 0.76;
+        }
+
+        /* 球面受光：星在球面上朝光源那一侧就亮，背面就暗。
+           用屏幕坐标相对球心的方向当法线，足够像「有个灯在照」。 */
+        var boost = 0;
+        var nx2 = (it.sx - state.cx) / (state.radius || 1);
+        var ny2 = (it.sy - state.cy) / (state.radius || 1);
+        var lam = nx2 * lamX + ny2 * lamY;
+
+        /* ① 方向光：受光面整体提亮，背面压暗 */
+        if (lam > 0) boost += 0.85 * lam * (0.35 + 0.65 * f);
+        else op *= 1 + lam * 0.34;
+
+        /* ② 轮廓光：靠边（front 小）且朝光源的那些星被"点亮边缘" */
+        if (lam > 0 && f < 0.55) {
+          var rimT = (1 - f / 0.55) * (1 - f / 0.55);
+          boost += 1.15 * rimT * lam;
+        }
+
+        /* ③ 受光点高光：光源正对的那一小片星额外亮起来 */
+        var dxl = it.sx - litX;
+        var dyl = it.sy - litY;
+        var dl = dxl * dxl + dyl * dyl;
+        if (dl < litR2) {
+          var t = 1 - dl / litR2;
+          boost += 0.95 * t * t * (0.45 + 0.55 * f);
+        }
+        for (var li2 = 0; li2 < lightList.length; li2++) {
+          var L = lightList[li2];
+          var dly = it.sy - L.y;
+          var dlx = it.sx - L.x;
+          var dl2 = dlx * dlx + dly * dly;
+          if (dl2 < L.r2) {
+            boost += 0.55 * (1 - dl2 / L.r2);
+          }
+        }
+        if (boost > 0) {
+          /* 提亮 + 微放大：正面的星本来就到顶了，只提亮看不出变化 */
+          var lit = op * (1 + boost);
+          op = lit > 1 ? 1 : lit;
+          scale *= 1 + boost * 0.55;
         }
 
         /* 球转得很慢（0.034 rad/s）：单帧位移常常不到半个像素，
@@ -503,6 +573,27 @@ var seq = 0;             /* 句子没有 id，自己发一个 */
         state.parallax.wy = state.parallax.y;
         dom.name.style.setProperty('--u', state.parallax.x.toFixed(3));
         dom.name.style.setProperty('--v', state.parallax.y.toFixed(3));
+        if (dom.flow) {
+          dom.flow.style.setProperty('--px', state.parallax.x.toFixed(3));
+          dom.flow.style.setProperty('--py', state.parallax.y.toFixed(3));
+        }
+        /* 光源方向：鼠标（手机上是陀螺仪倾角）。它不再画一层光，
+           而是当成一盏灯去照球体 —— 受光面亮、背面暗。 */
+      }
+
+      /* 卡片内部受光：只有抽签那张卡片有 —— 跟着鼠标（手机上是陀螺仪）走，
+         普通卡片就是一块安静的玻璃。 */
+      if (state.active && state.active === state.hero && !state.reduced) {
+        var cxp = Math.round((50 + state.parallax.x * 38) * 10) / 10;
+        var cyp = Math.round((50 + state.parallax.y * 34) * 10) / 10;
+        if (Math.abs(cxp - state.cardLx) > 0.8 || Math.abs(cyp - state.cardLy) > 0.8) {
+          state.cardLx = cxp;
+          state.cardLy = cyp;
+          card.style.setProperty('--clx', cxp + '%');
+          card.style.setProperty('--cly', cyp + '%');
+          card.style.setProperty('--cdx', (100 - cxp) + '%');
+          card.style.setProperty('--cdy', (100 - cyp) + '%');
+        }
       }
 
       /* 卡片倾斜：有陀螺仪就跟手机姿态走（安卓），没有就跟着鼠标 */
@@ -747,6 +838,8 @@ var seq = 0;             /* 句子没有 id，自己发一个 */
       card.style.setProperty('--rx', '0deg');
       card.style.setProperty('--ry', '0deg');
 
+      /* 普通卡片不受光：把抽签留下的光斑清掉 */
+      card.style.setProperty('--ctint', '0,0,0');
       card.classList.add('is-open');
       sync();
       followCard();
@@ -856,8 +949,11 @@ var seq = 0;             /* 句子没有 id，自己发一个 */
       if (d.moved > 8) {
         state.dragGuard = performance.now();
         state.spin = clamp(state.vel * 0.34, -5, 5);
-        /* 快甩：甩得够猛就召唤一场流星雨，并落下一颗星 */
-        if (!state.drawing && !state.hero && Math.abs(state.vel) > 30) {
+        /* 快甩：甩得够猛就召唤一场流星雨，并落下一颗星。
+           手机上触摸事件的采样更少、每一帧的位移也小，阈值得放低，
+           不然要甩得特别夸张才触发。 */
+        var flickNeed = IS_MOBILE ? 13 : 30;
+        if (!state.drawing && !state.hero && Math.abs(state.vel) > flickNeed) {
               draw();
         }
       }
@@ -943,11 +1039,34 @@ var seq = 0;             /* 句子没有 id，自己发一个 */
       trail.className = 'meteor__trail';
       var head = document.createElement('span');
       head.className = 'meteor__head';
+      /* 流星外面裹一圈很大的柔光：跟着它走，划过的地方天就亮一下 */
+      var light = document.createElement('span');
+      light.className = 'meteor__light';
+      trail.setAttribute('aria-hidden', 'true');
+      run.appendChild(light);
       run.appendChild(trail);
       run.appendChild(head);
       el.appendChild(run);
 
       meteorsLayer.appendChild(el);
+
+      /* 把这条流星登记成一盏移动的光：球面上的星会被它照亮 */
+      var rad = ang * Math.PI / 180;
+      var light = {
+        x: x,
+        y: y,
+        ax: Math.cos(rad),
+        ay: Math.sin(rad),
+        len: travel,
+        t0: performance.now(),
+        dur: dur
+      };
+      state.lights.push(light);
+      window.setTimeout(function () {
+        var li = state.lights.indexOf(light);
+        if (li >= 0) state.lights.splice(li, 1);
+      }, dur + 260);
+
       window.setTimeout(function () {
         if (el.parentNode) el.parentNode.removeChild(el);
       }, dur + 260);
@@ -986,6 +1105,66 @@ var seq = 0;             /* 句子没有 id，自己发一个 */
       }
     }
 
+
+    /* ------------------------------------------------------- 背景亮点 ---
+       偶尔在天上亮一下：复用几个元素，随机位置，1.5 秒化掉。
+       手机上少一点、慢一点。 */
+    var glints = [];
+    var glintTimer = 0;
+
+    function buildGlints() {
+      var layer = document.querySelector('.sky__glints');
+      if (!layer || glints.length) return;
+      var n = IS_MOBILE ? 2 : 4;
+      for (var i = 0; i < n; i++) {
+        var el = document.createElement('span');
+        el.className = 'glint';
+        layer.appendChild(el);
+        glints.push({ el: el, busy: 0 });
+      }
+    }
+
+    function spawnGlint() {
+      if (state.reduced || !glints.length) return;
+      var free = null;
+      for (var i = 0; i < glints.length; i++) {
+        if (!glints[i].busy) { free = glints[i]; break; }
+      }
+      if (!free) return;
+
+      /* 位置：40% 落在球体被照亮的那一侧（光和球是一体的），
+         其余撒在画面里，避开正中那条字带 */
+      var x, y;
+      {
+        x = rand(0, state.frame.w);
+        y = rand(0, state.frame.h);
+        if (Math.abs(y - state.frame.h * 0.46) < state.frame.h * 0.09) {
+          y += y < state.frame.h * 0.46 ? -70 : 70;
+        }
+      }
+
+      free.busy = 1;
+      free.el.style.setProperty('--gx', Math.round(x) + 'px');
+      free.el.style.setProperty('--gy', Math.round(y) + 'px');
+      free.el.classList.remove('is-on');
+      void free.el.offsetWidth;
+      free.el.classList.add('is-on');
+
+      var self = free;
+      window.setTimeout(function () {
+        self.el.classList.remove('is-on');
+        self.busy = 0;
+      }, 1600);
+    }
+
+    function glintLoop() {
+      if (state.reduced) return;
+      buildGlints();
+      spawnGlint();
+      window.clearTimeout(glintTimer);
+      glintTimer = window.setTimeout(glintLoop, rand(IS_MOBILE ? 1200 : 620, IS_MOBILE ? 2200 : 1500));
+    }
+
     function meteorLoop() {
       if (state.reduced) return;
       window.setTimeout(function () {
@@ -995,6 +1174,7 @@ var seq = 0;             /* 句子没有 id，自己发一个 */
           window.setTimeout(function () { spawnMeteor(0); }, rand(180, 520));
         }
         meteorLoop();
+    glintLoop();
       }, rand(2600, 7000));
     }
 
@@ -1013,6 +1193,14 @@ var seq = 0;             /* 句子没有 id，自己发一个 */
         narrow ? 16 : 22
       );
     }
+
+    /* 星星的色 → 卡片内部那团光的颜色 */
+    var TINT_RGB = {
+      gold: '255,215,161',
+      cream: '255,241,220',
+      rose: '255,182,201',
+      sky: '185,212,255'
+    };
 
     var PRESET_TINTS = ['cream', 'cream', 'sky', 'sky', 'gold'];
     var FEATURED_TINTS = ['gold', 'gold', 'gold', 'rose', 'cream'];
@@ -1156,9 +1344,7 @@ var seq = 0;             /* 句子没有 id，自己发一个 */
       if (!state.featured.length) return null;
       hide();
       state.drawing = true;
-      if (dom.onDraw) {
-        try { dom.onDraw(); } catch (e) { /* 回调出错不影响画面 */ }
-      }
+
       /* 球先加速 —— 流星雨和球的旋转是同一阵风 */
       state.spin = clamp(state.spin + 1.25, -5, 5);
       if (dom.galaxy) dom.galaxy.classList.add('is-lit');
@@ -1175,6 +1361,11 @@ var seq = 0;             /* 句子没有 id，自己发一个 */
       var fly = function () {
         state.hero = it;
         it.flying = true;
+        /* 记下它在球面上的位置：书签里要画出「这颗星在哪」 */
+        it.heroSpot = {
+          x: (it.sx - state.cx) / (state.radius || 1),
+          y: (it.sy - state.cy) / (state.radius || 1)
+        };
         /* 搬到 UI 层：.orb 在抽签时会被模糊，而这一颗必须是最清楚的
            （两层都是 inset:0 的绝对定位，坐标系一样，搬过去不会跳） */
         it.el.classList.add('star--settled');   /* 别再重播入场动画 */
@@ -1183,15 +1374,26 @@ var seq = 0;             /* 句子没有 id，自己发一个 */
         it.el.classList.add('is-hero');
         it.el.style.zIndex = '900';
         it.el.style.opacity = '1';
-        /* 先无过渡地放到它此刻的位置，下一帧再改成中心 → 一条飞过去的轨迹 */
+        /* 自己驱动一段弧线（不用 CSS 过渡）：起点在球面，终点是正中，
+           中途往侧上方鼓一下，顺手丢几个渐隐的残影。 */
         it.el.style.transition = 'none';
+        var s0 = Math.round((0.55 + 0.92 * it.front) * it.k * 100) / 100;
+        var from = { x: it.sx, y: it.sy };
+        var to = { x: box.starX, y: box.starY };
         it.el.style.transform =
-          'translate3d(' + px(it.sx) + ',' + px(it.sy) + ',0) scale(' +
-          (Math.round((0.55 + 0.92 * it.front) * it.k * 100) / 100) + ')';
-        void it.el.offsetWidth;                 /* 强制回流，让上面这帧生效 */
-        it.el.style.transition = '';
-        it.el.style.transform =
-          'translate3d(' + px(box.starX) + ',' + px(box.starY) + ',0) scale(2.6)';
+          'translate3d(' + px(from.x) + ',' + px(from.y) + ',0) scale(' + s0 + ')';
+        void it.el.offsetWidth;
+        flyArc(it, from, to, s0, 2.6, function () {
+          /* 落地：涟漪 + 风铃（音高跟着星在球面上的左右位置） */
+          if (dom.ripple) {
+            dom.ripple.classList.remove('is-on');
+            void dom.ripple.offsetWidth;
+            dom.ripple.classList.add('is-on');
+          }
+          if (dom.onLand) {
+            try { dom.onLand(from.x / Math.max(1, state.frame.w)); } catch (e) {}
+          }
+        });
 
         textEl.textContent = it.text;
         state.active = it;
@@ -1203,7 +1405,7 @@ var seq = 0;             /* 句子没有 id，自己发一个 */
         card.style.setProperty('--w', px(box.w));
         card.style.left = px(box.x);
         card.style.top = px(box.y);
-        /* 从正中那颗星的位置长出来 */
+        card.style.setProperty('--ctint', TINT_RGB[it.tint] || '255,215,161');
         card.classList.add('is-open', 'is-hero');
         link.classList.remove('is-on');
         sync();
@@ -1217,6 +1419,69 @@ var seq = 0;             /* 句子没有 id，自己发一个 */
       /* 等流星雨爬到最密的时候再飞星：先密，再有一个「它来了」的瞬间 */
       window.setTimeout(fly, state.reduced ? 40 : 1150);
       return it;
+    }
+
+
+    /* ---------------------------------------------------------- 飞星 ---
+       三点二次贝塞尔：起点 → 侧上方的控制点 → 终点。
+       沿途每隔几十毫秒在身后留一颗小光点，几百毫秒内淡掉。 */
+    var trailPool = [];
+    var trailIdx = 0;
+
+    function buildTrail() {
+      if (trailPool.length) return;
+      for (var i = 0; i < 7; i++) {
+        var el = document.createElement('span');
+        el.className = 'flytrail';
+        card.parentNode.appendChild(el);
+        trailPool.push(el);
+      }
+    }
+
+    function dropTrail(x, y, s) {
+      buildTrail();
+      var el = trailPool[trailIdx % trailPool.length];
+      trailIdx++;
+      el.style.transform =
+        'translate3d(' + px(x) + ',' + px(y) + ',0) scale(' + s + ')';
+      el.classList.remove('is-on');
+      void el.offsetWidth;
+      el.classList.add('is-on');
+    }
+
+    function flyArc(it, from, to, s0, s1, done) {
+      var dx = to.x - from.x;
+      var dy = to.y - from.y;
+      var len = Math.sqrt(dx * dx + dy * dy) || 1;
+      /* 控制点：沿法线方向鼓出去，方向取决于从哪边飞过来 */
+      var nx = -dy / len;
+      var ny = dx / len;
+      var bulge = Math.min(180, len * 0.3) * (dx > 0 ? -1 : 1);
+      var cx = (from.x + to.x) / 2 + nx * bulge;
+      var cy = (from.y + to.y) / 2 + ny * bulge;
+
+      var t0 = performance.now();
+      var DUR = 620;
+      var lastTrail = 0;
+
+      function step(now) {
+        var p = Math.min(1, (now - t0) / DUR);
+        var e = 1 - Math.pow(1 - p, 3);          /* ease-out */
+        var m = 1 - e;
+        var x = m * m * from.x + 2 * m * e * cx + e * e * to.x;
+        var y = m * m * from.y + 2 * m * e * cy + e * e * to.y;
+        var s = s0 + (s1 - s0) * e;
+        it.el.style.transform =
+          'translate3d(' + px(x) + ',' + px(y) + ',0) scale(' +
+          (Math.round(s * 100) / 100) + ')';
+        if (now - lastTrail > 70) {
+          lastTrail = now;
+          dropTrail(x, y, Math.round(s * 0.55 * 100) / 100);
+        }
+        if (p < 1) window.requestAnimationFrame(step);
+        else if (done) done();
+      }
+      window.requestAnimationFrame(step);
     }
 
     /* 把飞出去的星放回球面（不带动画） */
@@ -1360,6 +1625,7 @@ var seq = 0;             /* 句子没有 id，自己发一个 */
       closeAll: closeAll,
       justDragged: justDragged,
       isHero: function () { return !!state.hero; },
+      heroSpot: function () { return state.hero ? state.hero.heroSpot : null; },
       state: state
     };
   }

@@ -89,8 +89,16 @@
     <span class="sky__wash sky__wash--purple"></span>
     <span class="sky__wash sky__wash--blue"></span>
 
+    {{/* 流动的模糊：四团很大的柔光在里面慢慢漂，边界全是渐变，
+           所以看起来像「模糊在动」而不是背景在动。也会跟着视差走一点。 */}}
+    <span class="sky__flow" aria-hidden="true">
+    <span class="blob blob--1"></span>
+    <span class="blob blob--2"></span>
+    </span>
+
     {{/* 球心那团光 */}}
     <span class="sky__glow" aria-hidden="true"></span>
+    <span class="sky__glints" aria-hidden="true"></span>
 
     {{/* 银河：一条斜跨球体的呼吸光带（纯渐变，不用 blur，便宜） */}}
     <div class="sky__galaxy" data-galaxy>

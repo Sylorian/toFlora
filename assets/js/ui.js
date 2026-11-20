@@ -41,7 +41,7 @@
   var audio = null;
   var soundOn = true;
 
-  function bell() {
+  function bell(pos) {
     if (!soundOn) return;
     try {
       var Ctx = window.AudioContext || window.webkitAudioContext;
@@ -52,8 +52,12 @@
       var now = audio.currentTime;
       /* 取 2–3 个音，间隔很短，像风铃被碰到 */
       var n = 2 + Math.floor(Math.random() * 2);
+      /* pos: 0 = 球面最左，1 = 最右。右边的星响得高一点 —— 声音也有空间 */
+      var bias = typeof pos === 'number' ? Math.max(0, Math.min(1, pos)) : 0.5;
+      var base = Math.round(bias * (BELL.length - 3));
       for (var i = 0; i < n; i++) {
-        var f = BELL[Math.floor(Math.random() * BELL.length)];
+        var fi = Math.min(BELL.length - 1, base + i + Math.floor(Math.random() * 2));
+        var f = BELL[fi];
         var t0 = now + i * (0.06 + Math.random() * 0.09);
         var g = audio.createGain();
         g.gain.setValueAtTime(0.0001, t0);
@@ -97,13 +101,14 @@
       night: night,
       name: document.querySelector('[data-name]'),
       tick: document.querySelector('[data-tick]'),
+      flow: document.querySelector('.sky__flow'),
       orb: document.querySelector('[data-orb]'),
       shade: document.querySelector('[data-shade]'),
       dust: document.querySelector('[data-dust]'),
       galaxy: document.querySelector('[data-galaxy]'),
       fieldFar: document.querySelector('[data-field="far"]'),
       fieldNear: document.querySelector('[data-field="near"]'),
-      onDraw: function () { bell(); },
+      onLand: function (pos) { bell(pos); },
       stars: document.querySelector('[data-stars]'),
       meteors: document.querySelector('[data-meteors]'),
       card: document.querySelector('[data-card]'),
@@ -132,6 +137,34 @@
 
     /* ----------------------------------------------------- 抽一颗流星 --- */
 
+    /* ------------------------------------------- 开场：落款 ---
+       只有「Sylorian ／ 献给 Flora」，点屏幕（或 Esc）才退场。 */
+
+    var intro = document.querySelector('[data-intro]');
+    var nameEl = document.querySelector('[data-name]');
+    var tickEl0 = document.querySelector('[data-tick]');
+    var introDone = false;
+
+    function openIntro() {
+      if (!intro || introDone) return;
+      intro.classList.add('is-open');
+      intro.setAttribute('aria-hidden', 'false');
+      if (nameEl) nameEl.classList.add('is-away');
+      if (tickEl0) tickEl0.classList.add('is-away');
+      save('flora.seen.v1', new Date().toISOString().slice(0, 10));
+    }
+
+    function closeIntro() {
+      if (!intro || introDone) return;
+      introDone = true;
+      intro.classList.remove('is-open');
+      intro.setAttribute('aria-hidden', 'true');
+      if (nameEl) nameEl.classList.remove('is-away');
+      if (tickEl0) tickEl0.classList.remove('is-away');
+    }
+
+    if (intro) window.setTimeout(openIntro, 1700);
+
     /* -------------------------------------------------------- 存书签 --- */
     var saveBtn = document.querySelector('[data-save]');
     if (saveBtn) {
@@ -139,7 +172,8 @@
         if (!sky.isHero()) return;
         var t = document.querySelector('[data-card-text]');
         if (!t || !t.textContent) return;
-        saveBookmark(t.textContent).catch(function (e) {
+        var spot = sky.heroSpot ? sky.heroSpot() : null;
+        saveBookmark(t.textContent, spot).catch(function (e) {
           console.error('bookmark failed', e);
         });
       });
@@ -313,9 +347,9 @@
        抽中之后可以存成一张竖版书签 PNG：柔化的星空底 + 手写体正文 +
        Sylorian + 日期，底部剪一个 V 形缺口。全部在本地算，不上传。 */
 
-    async function saveBookmark(verse) {
-      var W = 640;
-      var H = 1600;
+    async function saveBookmark(verse, spot) {
+      var W = 720;
+      var H = 1800;
       try {
         await document.fonts.ready;
       } catch (e) {
@@ -328,22 +362,23 @@
       var g = c.getContext('2d');
       if (!g) return;
 
-      /* 1) 离屏画星空，再用 blur 贴回来 —— 就是「柔化的星空」 */
+      /* ---------- 底：柔化的星空 ---------- */
       var s = document.createElement('canvas');
       s.width = W;
       s.height = H;
       var sg = s.getContext('2d');
 
-      var bg = sg.createLinearGradient(0, 0, W * 0.5, H);
-      bg.addColorStop(0, '#0a0e20');
-      bg.addColorStop(0.45, '#151b38');
-      bg.addColorStop(1, '#070a15');
+      var bg = sg.createLinearGradient(0, 0, W * 0.6, H);
+      bg.addColorStop(0, '#080c1c');
+      bg.addColorStop(0.42, '#111834');
+      bg.addColorStop(1, '#05070f');
       sg.fillStyle = bg;
       sg.fillRect(0, 0, W, H);
 
       var blobs = [
-        ['rgba(96,58,178,0.5)', W * 0.22, H * 0.2, W * 0.95],
-        ['rgba(46,96,190,0.42)', W * 0.78, H * 0.66, W * 1.05]
+        ['rgba(104,58,206,0.5)', W * 0.2, H * 0.16, W * 0.95],
+        ['rgba(40,102,224,0.42)', W * 0.82, H * 0.62, W * 1.05],
+        ['rgba(255,214,168,0.12)', W * 0.5, H * 0.28, W * 0.7]
       ];
       for (var b = 0; b < blobs.length; b++) {
         var rg = sg.createRadialGradient(
@@ -355,32 +390,92 @@
         sg.fillRect(0, 0, W, H);
       }
 
-      for (var i = 0; i < 1200; i++) {
+      for (var i = 0; i < 1500; i++) {
         var x = Math.random() * W;
         var y = Math.random() * H;
-        var r = Math.random() * 1.3 + 0.3;
-        var a = Math.random() * 0.55 + 0.12;
-        sg.fillStyle = 'rgba(238,244,255,' + a.toFixed(3) + ')';
+        var a = Math.random() * 0.6 + 0.1;
+        var r = Math.random() < 0.06 ? 1.6 : Math.random() * 1.1 + 0.35;
+        sg.fillStyle = 'rgba(236,242,255,' + a.toFixed(3) + ')';
         sg.fillRect(x, y, r, r);
       }
 
       g.save();
       try {
-        g.filter = 'blur(2.4px)';
+        g.filter = 'blur(2.2px)';
       } catch (e) {
         /* 老浏览器就不柔了 */
       }
       g.drawImage(s, 0, 0);
       g.restore();
 
-      /* 2) 中间提亮一点 */
-      var vig = g.createRadialGradient(W / 2, H * 0.42, 0, W / 2, H * 0.42, H * 0.62);
+      /* 四周压暗，中间提亮 */
+      var vig = g.createRadialGradient(W / 2, H * 0.44, 0, W / 2, H * 0.44, H * 0.72);
       vig.addColorStop(0, 'rgba(255,246,230,0.05)');
       vig.addColorStop(1, 'rgba(0,0,0,0)');
       g.fillStyle = vig;
       g.fillRect(0, 0, W, H);
 
-      /* 3) 正文：手写体，逐字换行 + 中文禁则 */
+      /* ---------- 顶上的小球：那颗星的位置 ---------- */
+      var scx = W / 2;
+      var scy = 300;
+      var sR = 132;
+
+      g.save();
+      var sph = g.createRadialGradient(scx - sR * 0.3, scy - sR * 0.35, 0, scx, scy, sR);
+      sph.addColorStop(0, 'rgba(120,150,235,0.10)');
+      sph.addColorStop(0.7, 'rgba(40,60,130,0.06)');
+      sph.addColorStop(1, 'rgba(4,6,16,0.10)');
+      g.fillStyle = sph;
+      g.beginPath();
+      g.arc(scx, scy, sR, 0, Math.PI * 2);
+      g.fill();
+
+      g.strokeStyle = 'rgba(226,236,255,0.16)';
+      g.lineWidth = 1;
+      g.beginPath();
+      g.arc(scx, scy, sR, 0, Math.PI * 2);
+      g.stroke();
+
+      /* 球上零散几颗暗星，让小球不空 */
+      for (var k = 0; k < 26; k++) {
+        var ang = Math.random() * Math.PI * 2;
+        var rr = Math.sqrt(Math.random()) * sR * 0.92;
+        g.fillStyle = 'rgba(226,236,255,' + (Math.random() * 0.3 + 0.06).toFixed(3) + ')';
+        g.beginPath();
+        g.arc(scx + Math.cos(ang) * rr, scy + Math.sin(ang) * rr, Math.random() * 1.1 + 0.4, 0, Math.PI * 2);
+        g.fill();
+      }
+
+      /* 那颗星：四芒星 + 光晕 */
+      var px2 = scx + (spot && typeof spot.x === 'number' ? spot.x : 0) * sR * 0.82;
+      var py2 = scy + (spot && typeof spot.y === 'number' ? spot.y : 0) * sR * 0.82;
+
+      var halo = g.createRadialGradient(px2, py2, 0, px2, py2, 46);
+      halo.addColorStop(0, 'rgba(255,246,226,0.55)');
+      halo.addColorStop(0.35, 'rgba(255,226,180,0.18)');
+      halo.addColorStop(1, 'rgba(255,226,180,0)');
+      g.fillStyle = halo;
+      g.beginPath();
+      g.arc(px2, py2, 46, 0, Math.PI * 2);
+      g.fill();
+
+      g.fillStyle = '#fffdf7';
+      g.beginPath();
+      g.arc(px2, py2, 2.6, 0, Math.PI * 2);
+      g.fill();
+
+      /* 十字星芒 */
+      g.strokeStyle = 'rgba(255,250,238,0.85)';
+      g.lineWidth = 1.1;
+      g.beginPath();
+      g.moveTo(px2 - 16, py2);
+      g.lineTo(px2 + 16, py2);
+      g.moveTo(px2, py2 - 16);
+      g.lineTo(px2, py2 + 16);
+      g.stroke();
+      g.restore();
+
+      /* ---------- 正文 ---------- */
       g.font = '46px Xiaodou, "Kaiti SC", KaiTi, serif';
       g.fillStyle = '#fdf8ef';
       g.textAlign = 'center';
@@ -391,11 +486,11 @@
         /* 忽略 */
       }
 
-      var maxW = W * 0.78;
+      var maxW = W * 0.76;
       var lines = [];
       var line = '';
-      for (var k = 0; k < verse.length; k++) {
-        var ch = verse[k];
+      for (var vi = 0; vi < verse.length; vi++) {
+        var ch = verse[vi];
         if (g.measureText(line + ch).width > maxW && line) {
           lines.push(line);
           line = ch;
@@ -405,50 +500,54 @@
       }
       if (line) lines.push(line);
 
+      /* 中文禁则：开括号不落行末、标点不落行首 */
       var NO_END = '（「『《“【〈(‘';
       var NO_START = '，。、；：？！）」』》”】〉,.;:?!)';
-      for (var w = 0; w < lines.length - 1; w++) {
-        while (lines[w].length > 1 && NO_END.indexOf(lines[w].slice(-1)) >= 0) {
-          lines[w + 1] = lines[w].slice(-1) + lines[w + 1];
-          lines[w] = lines[w].slice(0, -1);
+      for (var w2 = 0; w2 < lines.length - 1; w2++) {
+        while (lines[w2].length > 1 && NO_END.indexOf(lines[w2].slice(-1)) >= 0) {
+          lines[w2 + 1] = lines[w2].slice(-1) + lines[w2 + 1];
+          lines[w2] = lines[w2].slice(0, -1);
         }
-        while (lines[w + 1].length > 1 && NO_START.indexOf(lines[w + 1].charAt(0)) >= 0) {
-          lines[w] += lines[w + 1].charAt(0);
-          lines[w + 1] = lines[w + 1].slice(1);
+        while (lines[w2 + 1].length > 1 && NO_START.indexOf(lines[w2 + 1].charAt(0)) >= 0) {
+          lines[w2] += lines[w2 + 1].charAt(0);
+          lines[w2 + 1] = lines[w2 + 1].slice(1);
         }
       }
 
       var lh = 46 * 1.95;
-      var startY = H * 0.47 - ((lines.length - 1) * lh) / 2;
+      var startY = H * 0.55 - ((lines.length - 1) * lh) / 2;
       for (var m = 0; m < lines.length; m++) {
         g.fillText(lines[m], W / 2, startY + m * lh);
       }
 
-      /* 4) 细线 + Sylorian + 日期（年/月/日） */
+      /* ---------- 落款 ---------- */
       var d = new Date();
       var dateText =
-        d.getFullYear() +
-        ' / ' +
-        ('0' + (d.getMonth() + 1)).slice(-2) +
-        ' / ' +
+        d.getFullYear() + ' / ' +
+        ('0' + (d.getMonth() + 1)).slice(-2) + ' / ' +
         ('0' + d.getDate()).slice(-2);
 
-      var baseY = H * 0.8;
-      g.strokeStyle = 'rgba(255,215,161,0.35)';
+      var baseY = H * 0.85;
+      var ruleW = 64;
+      var ruleGrad = g.createLinearGradient(W / 2 - ruleW, 0, W / 2 + ruleW, 0);
+      ruleGrad.addColorStop(0, 'rgba(255,215,161,0)');
+      ruleGrad.addColorStop(0.5, 'rgba(255,215,161,0.5)');
+      ruleGrad.addColorStop(1, 'rgba(255,215,161,0)');
+      g.strokeStyle = ruleGrad;
       g.lineWidth = 1;
       g.beginPath();
-      g.moveTo(W / 2 - 56, baseY - 62);
-      g.lineTo(W / 2 + 56, baseY - 62);
+      g.moveTo(W / 2 - ruleW, baseY - 62);
+      g.lineTo(W / 2 + ruleW, baseY - 62);
       g.stroke();
 
-      g.font = '100 40px Raleway, sans-serif';
+      g.font = '100 42px Raleway, sans-serif';
       try {
-        g.letterSpacing = '9px';
+        g.letterSpacing = '10px';
       } catch (e) {
         /* 忽略 */
       }
       g.fillStyle = 'rgba(253,249,241,0.92)';
-      g.fillText('Sylorian', W / 2 + 4, baseY - 8);
+      g.fillText('Sylorian', W / 2 + 5, baseY - 6);
 
       g.font = '20px KaiTi, "Kaiti SC", serif';
       try {
@@ -456,28 +555,24 @@
       } catch (e) {
         /* 忽略 */
       }
-      g.fillStyle = 'rgba(255,228,195,0.6)';
-      g.fillText(dateText, W / 2 + 2, baseY + 40);
+      g.fillStyle = 'rgba(255,228,195,0.55)';
+      g.fillText(dateText, W / 2 + 2, baseY + 42);
 
-      /* 5) 底部 V 形缺口 */
+      /* ---------- 底部 V 形缺口 ---------- */
       g.globalCompositeOperation = 'destination-out';
       g.beginPath();
-      g.moveTo(W / 2 - 66, H);
-      g.lineTo(W / 2, H - 86);
-      g.lineTo(W / 2 + 66, H);
+      g.moveTo(W / 2 - 74, H);
+      g.lineTo(W / 2, H - 96);
+      g.lineTo(W / 2 + 74, H);
       g.closePath();
       g.fill();
       g.globalCompositeOperation = 'source-over';
 
-      /* 6) 下载 */
+      /* ---------- 下载 ---------- */
       var name =
-        'to-flora-' +
-        d.getFullYear() +
-        '-' +
-        ('0' + (d.getMonth() + 1)).slice(-2) +
-        '-' +
-        ('0' + d.getDate()).slice(-2) +
-        '.png';
+        'to-flora-' + d.getFullYear() + '-' +
+        ('0' + (d.getMonth() + 1)).slice(-2) + '-' +
+        ('0' + d.getDate()).slice(-2) + '.png';
 
       if (!c.toBlob) return;
       c.toBlob(function (blob) {
@@ -495,44 +590,14 @@
       }, 'image/png');
     }
 
-    /* ------------------------------------------- 开场：落款 ---
-       只有「Sylorian ／ 献给 Flora」一行，没有别的说明。
-       当天第一次看 2.8 秒，之后 1.2 秒；点任意处 / Esc 可以提前收。 */
-
-    var intro = document.querySelector('[data-intro]');
-    var nameEl = document.querySelector('[data-name]');
-    var introDone = false;
-    var introTimer = 0;
-
-    function openIntro() {
-      if (!intro || introDone) return;
-      intro.classList.add('is-open');
-      intro.setAttribute('aria-hidden', 'false');
-      if (nameEl) nameEl.classList.add('is-away');
-      var tickEl = document.querySelector('[data-tick]');
-      if (tickEl) tickEl.classList.add('is-away');
-      var today = new Date().toISOString().slice(0, 10);
-      var first = load('flora.seen.v1', '') !== today;
-      save('flora.seen.v1', today);
-      introTimer = window.setTimeout(closeIntro, first ? 2800 : 1200);
-    }
-
-    function closeIntro() {
-      if (!intro || introDone) return;
-      introDone = true;
-      window.clearTimeout(introTimer);
-      intro.classList.remove('is-open');
-      intro.setAttribute('aria-hidden', 'true');
-      if (nameEl) nameEl.classList.remove('is-away');
-      var tickEl2 = document.querySelector('[data-tick]');
-      if (tickEl2) tickEl2.classList.remove('is-away');
-    }
-
-    if (intro) window.setTimeout(openIntro, 1700);
-
     /* ------------------------------------------------- 点空白处收起 --- */
 
     document.addEventListener('click', function (e) {
+      /* 落款还在：第一次点击只用来收落款，不做别的事 */
+      if (!introDone) {
+        closeIntro();
+        return;
+      }
       if (closest(e.target, '[data-intro-close]')) return;
       if (sky.justDragged && sky.justDragged()) return;
 
