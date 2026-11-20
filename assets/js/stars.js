@@ -981,6 +981,9 @@ var seq = 0;             /* 句子没有 id，自己发一个 */
 
       var ang, x, y, travel, len, dur;
 
+      /* 手机上让每一颗活得更久：飞得慢，尾巴停留得长 */
+      if (IS_MOBILE) dur *= 2.4;
+
       if (shower) {
         ang = state.showerAng;
         var rad = (ang * Math.PI) / 180;
@@ -1039,11 +1042,16 @@ var seq = 0;             /* 句子没有 id，自己发一个 */
       trail.className = 'meteor__trail';
       var head = document.createElement('span');
       head.className = 'meteor__head';
-      /* 流星外面裹一圈很大的柔光：跟着它走，划过的地方天就亮一下 */
-      var light = document.createElement('span');
-      light.className = 'meteor__light';
+      /* 流星外面裹一圈很大的柔光：跟着它走，划过的地方天就亮一下。
+         手机上一场雨 30 多颗，每颗一个 380px 的合成层会把 GPU 撑爆
+         （实测：闪屏、抖动、出现矩形接缝），所以手机上不建这层 ——
+         星星被照亮的那个效果走的是 JS 光源，不需要它。 */
       trail.setAttribute('aria-hidden', 'true');
-      run.appendChild(light);
+      if (!IS_MOBILE) {
+        var lightEl = document.createElement('span');
+        lightEl.className = 'meteor__light';
+        run.appendChild(lightEl);
+      }
       run.appendChild(trail);
       run.appendChild(head);
       el.appendChild(run);
@@ -1052,7 +1060,7 @@ var seq = 0;             /* 句子没有 id，自己发一个 */
 
       /* 把这条流星登记成一盏移动的光：球面上的星会被它照亮 */
       var rad = ang * Math.PI / 180;
-      var light = {
+      var lightSrc = {
         x: x,
         y: y,
         ax: Math.cos(rad),
@@ -1061,9 +1069,9 @@ var seq = 0;             /* 句子没有 id，自己发一个 */
         t0: performance.now(),
         dur: dur
       };
-      state.lights.push(light);
+      state.lights.push(lightSrc);
       window.setTimeout(function () {
-        var li = state.lights.indexOf(light);
+        var li = state.lights.indexOf(lightSrc);
         if (li >= 0) state.lights.splice(li, 1);
       }, dur + 260);
 
@@ -1074,12 +1082,27 @@ var seq = 0;             /* 句子没有 id，自己发一个 */
 
     /* 流星雨：从稀到密，四段递进（每毫秒落下的颗数 0.019 → 0.046），
        总共约 1.1 秒 32 颗。密度是排出来的，不是随机的 —— 随机看着像噪声。 */
-    var SHOWER_PLAN = [
+    var SHOWER_PLAN_DESKTOP = [
       [5, 260],
       [7, 300],
       [9, 280],
       [11, 240]
     ];
+
+    /* 手机：数量一颗不少（32 颗），但把时间摊开 3.6 倍 ——
+       同一时刻在屏幕上的流星因此少很多，密度下来了，雨的规模不变。 */
+    var SHOWER_PLAN_MOBILE = [
+      [5, 900],
+      [7, 1040],
+      [9, 980],
+      [11, 860]
+    ];
+
+    var SHOWER_PLAN = [];
+    function resetShowerPlan() {
+      SHOWER_PLAN = IS_MOBILE ? SHOWER_PLAN_MOBILE : SHOWER_PLAN_DESKTOP;
+    }
+    resetShowerPlan();
 
     function meteorShower() {
       if (state.reduced) {
