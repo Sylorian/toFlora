@@ -572,20 +572,36 @@
       g.globalCompositeOperation = 'source-over';
 
       /* ---------- 下载 ---------- */
+      /* 文件名必须每次都不一样：手机下载器遇到同名会覆盖/只留第一张。
+         毫秒时间戳 + 句子指纹，保证唯一。 */
+      var p2 = function (n) { return ('0' + n).slice(-2); };
       var stamp =
-        '' + d.getFullYear() +
-        ('0' + (d.getMonth() + 1)).slice(-2) +
-        ('0' + d.getDate()).slice(-2) + '-' +
-        ('0' + d.getHours()).slice(-2) +
-        ('0' + d.getMinutes()).slice(-2) +
-        ('0' + d.getSeconds()).slice(-2);
+        '' + d.getFullYear() + p2(d.getMonth() + 1) + p2(d.getDate()) + '-' +
+        p2(d.getHours()) + p2(d.getMinutes()) + p2(d.getSeconds()) + '-' +
+        p2(d.getMilliseconds());
       var hh = 0;
       for (var q = 0; q < verse.length; q++) hh = (hh * 31 + verse.charCodeAt(q)) % 99991;
-      var name = 'to-flora-' + stamp + '-' + ('0000' + hh.toString(36)).slice(-4) + '.png';
+      var name =
+        'to-flora-' + stamp + '-' + Date.now().toString(36) + '-' +
+        ('0000' + hh.toString(36)).slice(-4) + '.png';
 
       if (!c.toBlob) return;
+      window.__lastName = name;
       c.toBlob(function (blob) {
         if (!blob) return;
+        /* 手机上优先走系统分享面板：相册拿到的文件名才是对的。
+           不支持再退回 <a download>。 */
+        if (navigator.canShare && window.File) {
+          try {
+            var made = new File([blob], name, { type: 'image/png' });
+            if (navigator.canShare({ files: [made] })) {
+              navigator.share({ files: [made] }).catch(function () {});
+              return;
+            }
+          } catch (e) {
+            /* 退回下载 */
+          }
+        }
         var url = URL.createObjectURL(blob);
         var a = document.createElement('a');
         a.href = url;
